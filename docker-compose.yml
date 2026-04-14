@@ -1,0 +1,27 @@
+# docker-compose.yml
+# Placeholder — wire up frontend and backend containers when ready for deployment.
+#
+# TODO: Frontend - add Next.js service with hot-reload volume
+# TODO: Backend  - add FastAPI service, expose port 8000
+# TODO: DevOps   - add shared network, health checks, and env_file refs
+
+version: "3.9"
+
+services:
+  # TODO: uncomment and configure when services are ready
+
+  # frontend:
+  #   build: ./frontend
+  #   ports:
+  #     - "3000:3000"
+  #   env_file:
+  #     - ./frontend/.env
+  #   depends_on:
+  #     - backend
+
+  # backend:
+  #   build: ./backend
+  #   ports:
+  #     - "8000:8000"
+  #   env_file:
+  #     - ./backend/.env

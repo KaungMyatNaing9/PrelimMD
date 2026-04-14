@@ -1,0 +1,7 @@
+/* globals.css */
+/* Global styles and Tailwind base directives.
+   TODO: Frontend - customize theme tokens (colors, fonts) here */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
