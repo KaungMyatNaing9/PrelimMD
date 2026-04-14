@@ -2,7 +2,6 @@
 # Core backend dependencies — add feature-specific libraries in their own PR.
 #
 # TODO: AI     - add openai / anthropic SDK when implementing ai_engine.py
-# TODO: Voice  - add elevenlabs / deepgram SDK when implementing voice_service.py
 # TODO: Report - add reportlab or weasyprint for PDF generation
 
 fastapi>=0.111.0
@@ -10,3 +9,7 @@ uvicorn[standard]>=0.29.0
 pydantic>=2.7.0
 pydantic-settings>=2.2.0
 python-dotenv>=1.0.0
+python-multipart>=0.0.9   # required by FastAPI for UploadFile / form data
+
+# ── Voice ─────────────────────────────────────────────────────────────────────
+deepgram-sdk>=6.1.1
