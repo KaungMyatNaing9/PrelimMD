@@ -31,7 +31,7 @@ export default function RootLayout({
                 </span>
                 <span className="brand-copy">
                   <strong>PrelimMD</strong>
-                  <span>Frontend prototype</span>
+                  <span>Care navigation, simplified</span>
                 </span>
               </Link>
               <nav className="nav">

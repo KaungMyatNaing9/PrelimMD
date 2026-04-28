@@ -274,7 +274,7 @@ export default function InterviewChat() {
             <ul className="clean-list">
               <li>Start and end flow works.</li>
               <li>Transcript UI updates in real time.</li>
-              <li>Voice placeholder hands text into the chat composer.</li>
+              <li>Backend WebSocket transcription hands text into the chat composer.</li>
               <li>Report and booking screens can consume structured session data next.</li>
             </ul>
           </section>

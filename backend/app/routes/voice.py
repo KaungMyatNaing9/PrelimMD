@@ -29,6 +29,7 @@
 # TODO: Voice - POST /synthesize → accept text, return audio stream (TTS)
 
 from fastapi import APIRouter, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
 from app.config import settings
 from app.models.schemas import TranscribeResponse
@@ -104,7 +105,14 @@ async def stream_audio(websocket: WebSocket):
             await websocket.send_json({"type": "error", "message": str(exc)})
         except Exception:
             pass
-        await websocket.close(code=1011, reason=str(exc))
+        if (
+            websocket.application_state != WebSocketState.DISCONNECTED
+            and websocket.client_state != WebSocketState.DISCONNECTED
+        ):
+            try:
+                await websocket.close(code=1011, reason=str(exc))
+            except RuntimeError:
+                pass
 
 
 @router.post("/synthesize")
