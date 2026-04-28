@@ -30,8 +30,8 @@ export default function HomePage() {
           <span className="eyebrow">Voice-first patient engagement</span>
           <h1>PrelimMD turns a stressful intake into a guided, calm first step.</h1>
           <p className="supporting-text">
-            This frontend prototype covers the full patient-side experience: start the session,
-            capture answers, review a clinician-facing report, and move into appointment booking.
+            Start the intake conversation, capture patient responses in real time, review the
+            clinical summary, and move directly into the next care option.
           </p>
           <div className="button-row">
             <Link href="/interview" className="button">
@@ -78,7 +78,7 @@ export default function HomePage() {
       <section className="card-grid">
         {featureCards.map((card) => (
           <article key={card.title} className="panel feature-card">
-            <p className="eyebrow">Frontend deliverable</p>
+            <p className="eyebrow">Experience</p>
             <h2>{card.title}</h2>
             <p className="supporting-text">{card.description}</p>
             <Link href={card.href} className="button ghost">
@@ -86,29 +86,6 @@ export default function HomePage() {
             </Link>
           </article>
         ))}
-      </section>
-
-      <section className="panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">What this branch covers</p>
-            <h2>Your frontend scope in simple terms</h2>
-          </div>
-        </div>
-        <div className="field-list">
-          <article className="field-card">
-            <p className="label">Patient experience</p>
-            <p>Landing page, session start, chat view, transcript preview, and clear actions.</p>
-          </article>
-          <article className="field-card">
-            <p className="label">Data display</p>
-            <p>Report summary, extracted fields, risk badges, and next-step guidance.</p>
-          </article>
-          <article className="field-card">
-            <p className="label">Scheduling handoff</p>
-            <p>Doctor options, available visit types, and appointment confirmation UI.</p>
-          </article>
-        </div>
       </section>
     </main>
   );
