@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head><title>STT Live Test</title></head>
+<body>
+  <h2>Live Transcription Test</h2>
+  <button id="btn">Start</button>
+  <p><b>Status:</b> <span id="status" style="color:blue">idle</span></p>
+  <p><b>Live:</b> <span id="partial" style="color:gray"></span></p>
+  <p><b>Final:</b> <span id="final"></span></p>
+  <p><b>LLM:</b> <span id="llm" style="color:green"></span></p>
+  <p><b>Log:</b></p>
+  <pre id="log" style="background:#f0f0f0;padding:10px;height:200px;overflow:auto;font-size:12px"></pre>
+
+  <script>
+    const btn = document.getElementById("btn");
+    const log = document.getElementById("log");
+    const status = document.getElementById("status");
+
+    function addLog(msg) {
+      log.textContent += new Date().toISOString().slice(11,19) + " " + msg + "\n";
+      log.scrollTop = log.scrollHeight;
+    }
+
+    let running = false;
+    let ws, recorder, stream;
+
+    btn.onclick = async () => {
+      if (running) {
+        running = false;
+        btn.textContent = "Start";
+        status.textContent = "stopped";
+        recorder && recorder.stop();
+        stream && stream.getTracks().forEach(t => t.stop());
+        ws && ws.close();
+        return;
+      }
+
+      running = true;
+      btn.textContent = "Stop";
+      status.textContent = "connecting...";
+      addLog("Opening WebSocket...");
+
+      ws = new WebSocket("ws://localhost:8000/voice/stream");
+
+      ws.onopen  = () => { addLog("WebSocket connected"); };
+      ws.onerror = (e) => { addLog("WebSocket ERROR"); status.textContent = "ws error"; };
+      ws.onclose = (e) => { addLog("WebSocket closed: code=" + e.code + " reason=" + e.reason); };
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        addLog("Got: " + JSON.stringify(msg));
+        if (msg.type === "error")   { status.textContent = "SERVER ERROR: " + msg.message; return; }
+        if (msg.type === "partial") { document.getElementById("partial").textContent = msg.transcript; }
+        if (msg.type === "final")   {
+          document.getElementById("partial").textContent = "";
+          document.getElementById("final").textContent = msg.transcript;
+          document.getElementById("llm").textContent = msg.llm_response;
+        }
+      };
+
+      await new Promise((resolve, reject) => {
+        ws.addEventListener("open",  resolve, { once: true });
+        ws.addEventListener("error", reject,  { once: true });
+      }).catch(() => { addLog("WS failed to open"); running = false; btn.textContent = "Start"; return; });
+
+      if (!running) return;
+
+      addLog("Requesting mic...");
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch(e) {
+        addLog("Mic error: " + e.message); return;
+      }
+      addLog("Mic granted");
+
+      // MediaRecorder sends webm/opus chunks — Deepgram auto-detects format
+      recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+          e.data.arrayBuffer().then(buf => ws.send(buf));
+        }
+      };
+      recorder.start(250); // send a chunk every 250ms
+      status.textContent = "recording — speak now";
+      addLog("MediaRecorder started (webm/opus, 250ms chunks)");
+    };
+  </script>
+</body>
+</html>

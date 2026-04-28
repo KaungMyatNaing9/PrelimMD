@@ -13,3 +13,4 @@ python-multipart>=0.0.9   # required by FastAPI for UploadFile / form data
 
 # ── Voice ─────────────────────────────────────────────────────────────────────
 deepgram-sdk>=6.1.1
+websockets<14          # deepgram-sdk uses websockets.legacy which was removed in v14+
