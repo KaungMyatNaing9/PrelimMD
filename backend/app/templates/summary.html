@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Interview Summary — PrelimMD</title>
+  <style>
+    /* ── Design tokens ── */
+    :root {
+      --text:           #152436;
+      --text-soft:      #4f6377;
+      --accent:         #155e63;
+      --accent-strong:  #0f4549;
+      --accent-warm:    #d67c47;
+      --success:        #2f6e4f;
+      --bg:             #fcf8f1;
+      --line:           rgba(20, 39, 59, 0.12);
+      --surface:        rgba(255, 252, 247, 0.95);
+      --surface-strong: rgba(255, 255, 255, 0.96);
+    }
+
+    /* ── Reset & base ── */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
+      font-size: 10.5pt;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    /* ── Top accent bar ── */
+    .top-bar {
+      height: 5px;
+      background: linear-gradient(90deg, var(--accent-strong), var(--accent-warm));
+    }
+
+    /* ── Page wrapper ── */
+    .page {
+      padding: 2rem 2.5rem 3rem;
+      max-width: 780px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 1.2rem 0 1rem;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 1.5rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 1rem;
+      background: linear-gradient(135deg, #0f4549, #d67c47);
+      color: #fff8ef;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      flex-shrink: 0;
+    }
+
+    .brand-text strong {
+      display: block;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.05rem;
+      color: var(--text);
+    }
+
+    .brand-text span {
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    .doc-meta {
+      text-align: right;
+      font-size: 0.78rem;
+      color: var(--text-soft);
+      line-height: 1.6;
+    }
+
+    /* ── Hero block (chief complaint) ── */
+    .hero-block {
+      background: linear-gradient(135deg, rgba(255, 250, 244, 0.98), rgba(239, 247, 246, 0.96));
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 1.25rem 1.4rem;
+      margin-bottom: 1.2rem;
+    }
+
+    .eyebrow {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      margin-bottom: 0.3rem;
+    }
+
+    .hero-title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.45rem;
+      color: var(--text);
+      line-height: 1.25;
+      margin-bottom: 0.8rem;
+    }
+
+    /* ── Triage badge ── */
+    .badge-row {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .triage-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .triage-low       { background: rgba(47, 110, 79, 0.14);  color: #2f6e4f; }
+    .triage-moderate  { background: rgba(214, 124, 71, 0.16); color: #8f4e25; }
+    .triage-high      { background: rgba(157, 49, 49, 0.14);  color: #8a2d2d; }
+    .triage-emergency { background: rgba(157, 49, 49, 0.18);  color: #8a2d2d; }
+
+    .badge-label {
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    /* ── Info cards grid ── */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.8rem;
+      margin-bottom: 1.2rem;
+    }
+
+    .info-card {
+      background: var(--surface-strong);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+    }
+
+    .info-card .label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      margin-bottom: 0.3rem;
+    }
+
+    .info-card p {
+      font-size: 0.88rem;
+      line-height: 1.5;
+      color: var(--text);
+    }
+
+    /* ── Score table ── */
+    .section-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      margin-bottom: 1.2rem;
+      overflow: hidden;
+      background: var(--surface);
+      page-break-inside: avoid;
+    }
+
+    .section-header {
+      background: linear-gradient(135deg, rgba(21, 94, 99, 0.07), rgba(214, 124, 71, 0.05));
+      border-bottom: 1px solid var(--line);
+      padding: 0.6rem 1rem;
+    }
+
+    .section-title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 0.95rem;
+      color: var(--accent-strong);
+    }
+
+    .score-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+
+    .score-table th {
+      padding: 0.5rem 1rem;
+      text-align: left;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .score-table td {
+      padding: 0.55rem 1rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .score-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* ── Transcript ── */
+    .transcript-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1.5rem 0 0.8rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .transcript-title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1rem;
+      color: var(--text);
+    }
+
+    .transcript-count {
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    .turn {
+      margin-bottom: 0.75rem;
+      page-break-inside: avoid;
+    }
+
+    .turn-meta {
+      font-size: 0.72rem;
+      color: var(--text-soft);
+      margin-bottom: 0.2rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .bubble {
+      border-radius: 12px;
+      padding: 0.6rem 0.9rem;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      border: 1px solid var(--line);
+      max-width: 88%;
+    }
+
+    .bubble-ai {
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--text);
+    }
+
+    .bubble-patient {
+      background: rgba(21, 94, 99, 0.09);
+      color: var(--text);
+      margin-left: auto;
+    }
+
+    .turn-patient .turn-meta {
+      text-align: right;
+    }
+
+    .turn-patient {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+
+    /* ── Flags ── */
+    .flags-list {
+      padding: 0.6rem 1rem 0.8rem;
+      font-size: 0.85rem;
+      color: var(--text);
+      list-style: disc;
+      padding-left: 2.2rem;
+    }
+
+    .flags-list li {
+      margin-bottom: 0.25rem;
+      color: #8a2d2d;
+    }
+
+    /* ── Footer ── */
+    .doc-footer {
+      margin-top: 2rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.72rem;
+      color: var(--text-soft);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── Print ── */
+    @page {
+      size: A4;
+      margin: 1cm 1.5cm;
+    }
+
+    @media print {
+      .turn { page-break-inside: avoid; }
+      .section-card { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar"></div>
+  <div class="page">
+
+    <!-- Header -->
+    <header class="doc-header">
+      <div class="brand">
+        <div class="brand-mark">PM</div>
+        <div class="brand-text">
+          <strong>PrelimMD</strong>
+          <span>Clinical intake system</span>
+        </div>
+      </div>
+      <div class="doc-meta">
+        <div>Interview summary</div>
+        <div>Session: {{ summary.session_id[:8] }}…</div>
+        <div>Generated: {{ generated_at }}</div>
+      </div>
+    </header>
+
+    <!-- Hero: chief complaint -->
+    <div class="hero-block">
+      <p class="eyebrow">Chief complaint</p>
+      <h1 class="hero-title">{{ summary.chief_complaint if summary.chief_complaint else "Not recorded" }}</h1>
+      <div class="badge-row">
+        {% if summary.triage_level %}
+          <span class="triage-badge triage-{{ summary.triage_level }}">{{ summary.triage_level }}</span>
+          <span class="badge-label">Triage level</span>
+        {% endif %}
+        <span class="badge-label">Status: {{ summary.status }}</span>
+      </div>
+    </div>
+
+    <!-- Info cards -->
+    <div class="info-grid">
+      <div class="info-card">
+        <p class="label">Recommended routing</p>
+        <p>{{ summary.recommended_routing if summary.recommended_routing else "Not determined" }}</p>
+      </div>
+      <div class="info-card">
+        <p class="label">Clinical notes</p>
+        <p>{{ summary.notes if summary.notes else "None" }}</p>
+      </div>
+    </div>
+
+    <!-- Triage flags -->
+    {% if summary.triage_flags %}
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">Triage flags</div>
+        </div>
+        <ul class="flags-list">
+          {% for flag in summary.triage_flags %}
+            <li>{{ flag }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <!-- Scores (only if scoring was enabled) -->
+    {% if summary.scores %}
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">Scores</div>
+        </div>
+        <table class="score-table">
+          <thead>
+            <tr>
+              <th>Section</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for section_id, score in summary.scores.items() %}
+              <tr>
+                <td>{{ section_id }}</td>
+                <td>{{ score }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    <!-- Transcript -->
+    <div class="transcript-header">
+      <h2 class="transcript-title">Interview transcript</h2>
+      <span class="transcript-count">{{ transcript | length }} message{{ "s" if transcript | length != 1 }}</span>
+    </div>
+
+    {% for message in transcript %}
+      {% if message.role == "assistant" %}
+        <div class="turn turn-ai">
+          <div class="turn-meta">PrelimMD</div>
+          <div class="bubble bubble-ai">{{ message.content }}</div>
+        </div>
+      {% elif message.role == "user" %}
+        <div class="turn turn-patient">
+          <div class="turn-meta">Patient</div>
+          <div class="bubble bubble-patient">{{ message.content }}</div>
+        </div>
+      {% endif %}
+    {% endfor %}
+
+    <!-- Footer -->
+    <footer class="doc-footer">
+      <span>PrelimMD — Confidential patient intake record</span>
+      <span>Form: {{ summary.form_id }} · Session {{ summary.session_id[:8] }}</span>
+    </footer>
+
+  </div>
+</body>
+</html>

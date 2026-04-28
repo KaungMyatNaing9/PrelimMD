@@ -1,0 +1,184 @@
+{
+  "form_id": "phq9",
+  "title": "PHQ-9 Patient Health Questionnaire",
+  "description": "Validated 9-item depression screening tool. Scored 0-27; higher scores indicate greater depression severity.",
+  "source_url": "https://uhs.fsu.edu/sites/g/files/upcbnu1651/files/docs/PHQ-9%20and%20GAD-7%20Form_a.pdf",
+  "version": "1.0",
+  "sections": [
+    {
+      "id": "phq9_s1",
+      "title": "Over the last two weeks",
+      "instructions": "Over the last two weeks, how often have you been bothered by any of the following problems?",
+      "questions": [
+        {
+          "id": "phq9_q1",
+          "text": "Little interest or pleasure in doing things?",
+          "conversational_hint": "How much have you been able to enjoy the things you usually like to do?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "phq9_q2",
+          "text": "Feeling down, depressed, or hopeless?",
+          "conversational_hint": "How often have you been feeling down or like things won't get better?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "phq9_q3",
+          "text": "Trouble falling or staying asleep, or sleeping too much?",
+          "conversational_hint": "How has your sleep been lately — any trouble falling asleep, staying asleep, or finding yourself sleeping a lot more than usual?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "phq9_q4",
+          "text": "Feeling tired or having little energy?",
+          "conversational_hint": "How would you describe your energy levels — have you been feeling unusually tired or worn out?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "phq9_q5",
+          "text": "Poor appetite or overeating?",
+          "conversational_hint": "Has your appetite changed at all — eating much less than usual, or finding yourself eating a lot more?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "phq9_q6",
+          "text": "Feeling bad about yourself — or that you are a failure or have let yourself or your family down?",
+          "conversational_hint": "Have you been having thoughts like feeling you've let people down, or feeling badly about yourself?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "phq9_q7",
+          "text": "Trouble concentrating on things, such as reading the newspaper or watching television?",
+          "conversational_hint": "How has your concentration been — trouble focusing on reading, watching TV, or staying on task?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "phq9_q8",
+          "text": "Moving or speaking so slowly that other people could have noticed? Or the opposite — being so fidgety or restless that you have been moving around a lot more than usual?",
+          "conversational_hint": "Have others noticed you moving or talking more slowly than usual, or on the flip side, feeling very restless and unable to stay still?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "phq9_q9",
+          "text": "Thoughts that you would be better off dead, or of hurting yourself in some way?",
+          "conversational_hint": "This next question is important for your safety — have you had any thoughts of hurting yourself or that you would be better off not being here?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        }
+      ]
+    },
+    {
+      "id": "phq9_s2",
+      "title": "Functional impact",
+      "instructions": "If you checked off any problems, how difficult have these problems made it for you to do your work, take care of things at home, or get along with other people?",
+      "questions": [
+        {
+          "id": "phq9_q10",
+          "text": "How difficult have these problems made it to do your work, take care of things at home, or get along with other people?",
+          "conversational_hint": "Overall, how much have these feelings affected your day-to-day life — things like work, home responsibilities, or getting along with others?",
+          "type": "single_choice",
+          "required": false,
+          "options": [
+            {"value": 0, "label": "Not difficult at all"},
+            {"value": 1, "label": "Somewhat difficult"},
+            {"value": 2, "label": "Very difficult"},
+            {"value": 3, "label": "Extremely difficult"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    }
+  ],
+  "scoring": {
+    "enabled": true,
+    "method": "sum",
+    "ranges": [
+      {"min": 0,  "max": 4,  "triage_level": "low",      "label": "Minimal depression"},
+      {"min": 5,  "max": 9,  "triage_level": "low",      "label": "Mild depression"},
+      {"min": 10, "max": 14, "triage_level": "moderate", "label": "Moderate depression"},
+      {"min": 15, "max": 19, "triage_level": "high",     "label": "Moderately severe depression"},
+      {"min": 20, "max": 27, "triage_level": "high",     "label": "Severe depression"}
+    ]
+  }
+}

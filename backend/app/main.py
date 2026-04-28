@@ -2,12 +2,12 @@
 # FastAPI application entry point.
 # Registers all routers and configures middleware.
 #
-# TODO: Backend - add CORS origins once frontend URL is known
 # TODO: Backend - add auth middleware (JWT / API key) before going to production
 # TODO: Backend - add structured logging middleware
 
 from fastapi import FastAPI
-from app.routes import interview, voice, report, scheduling
+from fastapi.middleware.cors import CORSMiddleware
+from app.routes import forms, interview, voice, report, scheduling
 
 app = FastAPI(
     title="PrelimMD API",
@@ -15,8 +15,16 @@ app = FastAPI(
     description="Backend for the PrelimMD AI pre-screening assistant",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ── Routers ──────────────────────────────────────────────────────────────────
 app.include_router(interview.router, prefix="/interview", tags=["Interview"])
+app.include_router(forms.router,     prefix="/forms",     tags=["Forms"])
 app.include_router(voice.router,     prefix="/voice",     tags=["Voice"])
 app.include_router(report.router,    prefix="/report",    tags=["Report"])
 app.include_router(scheduling.router,prefix="/scheduling",tags=["Scheduling"])

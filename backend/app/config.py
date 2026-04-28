@@ -5,9 +5,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    openai_api_key: str = ""
     deepgram_api_key: str = ""
-    # Maximum audio upload size in megabytes
-    max_file_size_mb: int = 25
+    max_file_size_mb: int = 25  # maximum audio upload size in megabytes
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

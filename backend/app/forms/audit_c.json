@@ -1,0 +1,82 @@
+{
+  "form_id": "audit_c",
+  "title": "AUDIT-C Alcohol Use Screening",
+  "description": "Validated 3-item alcohol use screening tool derived from the full AUDIT. Scored 0-12; a score of 4+ (men) or 3+ (women) is a positive screen.",
+  "source_url": "https://sa1s3.patientpop.com/assets/docs/414715.pdf",
+  "version": "1.0",
+  "sections": [
+    {
+      "id": "audit_c_s1",
+      "title": "Alcohol use",
+      "instructions": "The following questions are about your use of alcoholic beverages during the past year.",
+      "questions": [
+        {
+          "id": "audit_c_q1",
+          "text": "How often do you have a drink containing alcohol?",
+          "conversational_hint": "Starting with the past year — how often do you typically have an alcoholic drink?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Never"},
+            {"value": 1, "label": "Monthly or less"},
+            {"value": 2, "label": "2 to 4 times a month"},
+            {"value": 3, "label": "2 to 3 times a week"},
+            {"value": 4, "label": "4 or more times a week"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "audit_c_q2",
+          "text": "How many drinks containing alcohol do you have on a typical day when you are drinking?",
+          "conversational_hint": "On a day when you do drink, how many drinks would you usually have?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "1 or 2"},
+            {"value": 1, "label": "3 or 4"},
+            {"value": 2, "label": "5 or 6"},
+            {"value": 3, "label": "7 to 9"},
+            {"value": 4, "label": "10 or more"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": {
+            "question_id": "audit_c_q1",
+            "condition": "equals",
+            "value": 0
+          }
+        },
+        {
+          "id": "audit_c_q3",
+          "text": "How often do you have six or more drinks on one occasion?",
+          "conversational_hint": "How often do you end up having six or more drinks in a single sitting?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Never"},
+            {"value": 1, "label": "Less than monthly"},
+            {"value": 2, "label": "Monthly"},
+            {"value": 3, "label": "Weekly"},
+            {"value": 4, "label": "Daily or almost daily"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": {
+            "question_id": "audit_c_q1",
+            "condition": "equals",
+            "value": 0
+          }
+        }
+      ]
+    }
+  ],
+  "scoring": {
+    "enabled": true,
+    "method": "sum",
+    "ranges": [
+      {"min": 0,  "max": 2,  "triage_level": "low",      "label": "Low risk (women: 0-2, men: 0-3)"},
+      {"min": 3,  "max": 4,  "triage_level": "moderate", "label": "Positive screen — further assessment recommended"},
+      {"min": 5,  "max": 8,  "triage_level": "moderate", "label": "Hazardous or harmful drinking likely"},
+      {"min": 9,  "max": 12, "triage_level": "high",     "label": "Possible alcohol dependence"}
+    ]
+  }
+}

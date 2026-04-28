@@ -3,6 +3,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 export const isMockApiEnabled = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
 
 const SESSION_STORAGE_KEY = "prelimmd-demo-session";
+const LIVE_SESSION_KEY = "prelimmd-live-session";
 const REPORT_STORAGE_KEY = "prelimmd-demo-report";
 const BOOKING_STORAGE_KEY = "prelimmd-demo-booking";
 
@@ -86,6 +87,17 @@ type StoredSession = {
   transcript: TranscriptTurn[];
   answers: string[];
   extractedFields: InterviewField[];
+  triageLevel: TriageLevel | null;
+  routingHint: string;
+};
+
+type LiveSession = {
+  sessionId: string;
+  createdAt: string;
+  status: InterviewStatus;
+  transcript: TranscriptTurn[];
+  totalQuestions: number;
+  progress: number;
   triageLevel: TriageLevel | null;
   routingHint: string;
 };
@@ -289,6 +301,48 @@ function buildReport(session: StoredSession): IntakeReport {
   };
 }
 
+type BackendSessionSummary = {
+  session_id: string;
+  form_id: string;
+  status: string;
+  answers: Record<string, unknown>;
+  triage_level: TriageLevel | null;
+  triage_flags: string[];
+  scores: Record<string, number>;
+  chief_complaint: string;
+  recommended_routing: string;
+  notes: string;
+};
+
+function summaryToReport(
+  summary: BackendSessionSummary,
+  transcript: TranscriptTurn[]
+): IntakeReport {
+  const riskLevel = summary.triage_level ?? "low";
+  const extractedFields: InterviewField[] = Object.entries(summary.answers).map(
+    ([label, value]) => ({ label, value: String(value ?? "") })
+  );
+
+  return {
+    reportId: createId("report"),
+    sessionId: summary.session_id,
+    createdAt: new Date().toISOString(),
+    chiefComplaint: summary.chief_complaint || "See transcript.",
+    riskLevel,
+    recommendedRouting: summary.recommended_routing || deriveRoutingHint(riskLevel),
+    summary: `Form: ${summary.form_id}. ${summary.notes || ""}`.trim(),
+    notes: summary.notes,
+    missingInformation: [],
+    extractedFields,
+    nextSteps: [
+      "Clinician reviews the intake summary and transcript.",
+      "Scheduling module matches the patient to appropriate appointment slots.",
+      "Patient receives a clear follow-up plan with escalation guidance.",
+    ],
+    transcript,
+  };
+}
+
 function buildSlots(riskLevel: TriageLevel) {
   if (riskLevel === "emergency" || riskLevel === "high") {
     return [
@@ -379,28 +433,46 @@ export function getInterviewSession() {
 
 export async function resetInterview() {
   safeRemove(SESSION_STORAGE_KEY);
+  safeRemove(LIVE_SESSION_KEY);
   safeRemove(REPORT_STORAGE_KEY);
   safeRemove(BOOKING_STORAGE_KEY);
   await delay(100);
 }
 
-export async function startInterview() {
+export async function startInterview(formId = "hpi") {
   if (!isMockApiEnabled) {
-    const response = await apiFetch<{ message?: string; session_id?: string }>(
-      "/interview/start",
-      { method: "POST" }
-    );
-    const firstQuestion = response.message ?? DEMO_QUESTIONS[0];
+    const response = await apiFetch<{
+      session_id: string;
+      form_title: string;
+      first_question: string;
+      total_questions: number;
+    }>("/interview/start", {
+      method: "POST",
+      body: JSON.stringify({ form_id: formId }),
+    });
+
+    const firstQuestion = response.first_question;
+    const liveSession: LiveSession = {
+      sessionId: response.session_id,
+      createdAt: new Date().toISOString(),
+      status: "in_progress",
+      transcript: [makeTurn("ai", firstQuestion, "system")],
+      totalQuestions: response.total_questions,
+      progress: 0,
+      triageLevel: null,
+      routingHint: "Intake in progress.",
+    };
+    safeWrite(LIVE_SESSION_KEY, liveSession);
 
     return {
-      sessionId: response.session_id ?? createId("session"),
-      createdAt: new Date().toISOString(),
+      sessionId: liveSession.sessionId,
+      createdAt: liveSession.createdAt,
       status: "in_progress" as const,
       currentQuestion: firstQuestion,
-      transcript: [makeTurn("ai", firstQuestion, "system")],
+      transcript: liveSession.transcript,
       extractedFields: [],
       triageLevel: null,
-      routingHint: "Waiting on AI interview engine response.",
+      routingHint: liveSession.routingHint,
       progress: 0,
       reportReady: false,
     };
@@ -425,28 +497,60 @@ export async function sendInterviewAnswer(
   source: TranscriptSource = "typed"
 ) {
   if (!isMockApiEnabled) {
-    const response = await apiFetch<{ message?: string }>(
-      "/interview/respond",
-      {
-        method: "POST",
-        body: JSON.stringify({ session_id: sessionId, answer }),
-      }
-    );
+    const response = await apiFetch<{
+      session_id: string;
+      ai_response: string;
+      question_answered_id: string;
+      next_question_id: string | null;
+      progress: number;
+      triage_flag: boolean;
+      triage_reason: string | null;
+      form_complete: boolean;
+    }>("/interview/respond", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, answer }),
+    });
+
+    const liveSession = safeRead<LiveSession>(LIVE_SESSION_KEY);
+    const prevTranscript = liveSession?.transcript ?? [];
+    const updatedTranscript = [
+      ...prevTranscript,
+      makeTurn("patient", answer, source),
+    ];
+    if (!response.form_complete) {
+      updatedTranscript.push(makeTurn("ai", response.ai_response, "system"));
+    }
+
+    const progressPct = Math.round(response.progress * 100);
+    const isComplete = response.form_complete;
+
+    const updatedLive: LiveSession = {
+      ...(liveSession ?? {
+        sessionId,
+        createdAt: new Date().toISOString(),
+        totalQuestions: 0,
+        routingHint: "",
+      }),
+      sessionId,
+      status: isComplete ? "completed" : "in_progress",
+      transcript: updatedTranscript,
+      progress: progressPct,
+      triageLevel: null,
+      routingHint: liveSession?.routingHint ?? "",
+    };
+    safeWrite(LIVE_SESSION_KEY, updatedLive);
 
     return {
       sessionId,
-      createdAt: new Date().toISOString(),
-      status: "in_progress" as const,
-      currentQuestion: response.message ?? "Awaiting backend interview contract.",
-      transcript: [
-        makeTurn("patient", answer, source),
-        makeTurn("ai", response.message ?? "Awaiting backend interview contract.", "system"),
-      ],
+      createdAt: updatedLive.createdAt,
+      status: updatedLive.status,
+      currentQuestion: isComplete ? null : response.ai_response,
+      transcript: updatedTranscript,
       extractedFields: [],
       triageLevel: null,
-      routingHint: "Backend interview engine will drive routing once connected.",
-      progress: 25,
-      reportReady: false,
+      routingHint: updatedLive.routingHint,
+      progress: progressPct,
+      reportReady: isComplete,
     };
   }
 
@@ -499,6 +603,43 @@ export async function sendInterviewAnswer(
 }
 
 export async function completeInterview(sessionId: string) {
+  if (!isMockApiEnabled) {
+    const summary = await apiFetch<BackendSessionSummary>(
+      `/interview/${sessionId}/summary`
+    );
+    const liveSession = safeRead<LiveSession>(LIVE_SESSION_KEY);
+    const transcript = liveSession?.transcript ?? [];
+    const report = summaryToReport(summary, transcript);
+    safeWrite(REPORT_STORAGE_KEY, report);
+
+    const completedLive: LiveSession = {
+      ...(liveSession ?? {
+        sessionId,
+        createdAt: new Date().toISOString(),
+        totalQuestions: 0,
+        routingHint: report.recommendedRouting,
+      }),
+      sessionId,
+      status: "completed",
+      triageLevel: summary.triage_level ?? null,
+      routingHint: report.recommendedRouting,
+    };
+    safeWrite(LIVE_SESSION_KEY, completedLive);
+
+    return {
+      sessionId,
+      createdAt: completedLive.createdAt,
+      status: "completed" as const,
+      currentQuestion: null,
+      transcript,
+      extractedFields: report.extractedFields,
+      triageLevel: completedLive.triageLevel,
+      routingHint: completedLive.routingHint,
+      progress: 100,
+      reportReady: true,
+    };
+  }
+
   await delay();
 
   const session = getStoredSession();
@@ -527,82 +668,50 @@ export async function completeInterview(sessionId: string) {
 }
 
 export async function getReport(sessionId?: string) {
-  if (!isMockApiEnabled && sessionId) {
-    const response = await apiFetch<{ session_id?: string; message?: string }>(
-      `/report/${sessionId}`
+  if (!isMockApiEnabled) {
+    // Use the report cached by completeInterview if it holds a real backend session id
+    const cachedReport = getStoredReport();
+    if (cachedReport && !cachedReport.sessionId.startsWith("session-")) {
+      return cachedReport;
+    }
+    // Re-fetch using the live session id from localStorage (or the caller-supplied id)
+    const liveSessionId = sessionId ?? safeRead<LiveSession>(LIVE_SESSION_KEY)?.sessionId;
+    if (!liveSessionId) {
+      throw new Error("No completed interview session found. Please complete an interview first.");
+    }
+    const summary = await apiFetch<BackendSessionSummary>(
+      `/interview/${liveSessionId}/summary`
     );
-
-    return {
-      reportId: createId("report"),
-      sessionId: response.session_id ?? sessionId,
-      createdAt: new Date().toISOString(),
-      chiefComplaint: "Backend report payload pending",
-      riskLevel: "moderate" as const,
-      recommendedRouting: response.message ?? "Awaiting report service contract.",
-      summary: "Hook this screen to the shared report payload once backend models are finalized.",
-      notes: "The frontend is ready to consume structured JSON here.",
-      missingInformation: [],
-      extractedFields: [],
-      nextSteps: ["Finalize report schema and PDF endpoint contract."],
-      transcript: [],
-    };
+    const liveSession = safeRead<LiveSession>(LIVE_SESSION_KEY);
+    const transcript = liveSession?.transcript ?? [];
+    const report = summaryToReport(summary, transcript);
+    safeWrite(REPORT_STORAGE_KEY, report);
+    return report;
   }
 
   await delay(250);
 
   const storedReport = getStoredReport();
-
   if (storedReport) {
     return storedReport;
   }
 
-  const seededAnswers = [
-    "Persistent sore throat with low fever.",
-    "Symptoms began three days ago and feel slightly worse this morning.",
-    "No chest pain, fainting, or trouble breathing reported.",
-    "Patient wants guidance on whether same-day care is needed.",
-  ];
+  // Mock mode with no completed session
   const existingSession = getStoredSession();
-  const fallbackSession: StoredSession =
-    existingSession ??
-    {
-      sessionId: createId("session"),
-      createdAt: new Date().toISOString(),
-      status: "completed",
-      questionIndex: DEMO_QUESTIONS.length - 1,
-      answers: seededAnswers,
-      extractedFields: deriveFields(seededAnswers),
-      triageLevel: "moderate",
-      routingHint: deriveRoutingHint("moderate"),
-      transcript: [
-        makeTurn("ai", DEMO_QUESTIONS[0], "system"),
-        makeTurn("patient", seededAnswers[0], "typed"),
-        makeTurn("ai", DEMO_QUESTIONS[1], "system"),
-        makeTurn("patient", seededAnswers[1], "typed"),
-        makeTurn("ai", DEMO_QUESTIONS[2], "system"),
-        makeTurn("patient", seededAnswers[2], "typed"),
-        makeTurn("ai", DEMO_QUESTIONS[3], "system"),
-        makeTurn("patient", seededAnswers[3], "typed"),
-      ],
-    };
-
-  if (!existingSession) {
-    safeWrite(SESSION_STORAGE_KEY, fallbackSession);
+  if (existingSession?.status === "completed") {
+    const completedReport = buildReport({
+      ...existingSession,
+      triageLevel: existingSession.triageLevel ?? deriveRiskLevel(existingSession.answers),
+      routingHint:
+        existingSession.routingHint ??
+        deriveRoutingHint(existingSession.triageLevel ?? deriveRiskLevel(existingSession.answers)),
+      extractedFields: deriveFields(existingSession.answers),
+    });
+    safeWrite(REPORT_STORAGE_KEY, completedReport);
+    return completedReport;
   }
 
-  const fallbackReport = buildReport({
-    ...fallbackSession,
-    status: "completed",
-    triageLevel:
-      fallbackSession.triageLevel ?? deriveRiskLevel(fallbackSession.answers),
-    routingHint:
-      fallbackSession.routingHint ??
-      deriveRoutingHint(fallbackSession.triageLevel ?? deriveRiskLevel(fallbackSession.answers)),
-    extractedFields: deriveFields(fallbackSession.answers),
-  });
-
-  safeWrite(REPORT_STORAGE_KEY, fallbackReport);
-  return fallbackReport;
+  throw new Error("No completed interview session found. Please complete an interview first.");
 }
 
 export async function getSchedulingSlots() {
@@ -678,6 +787,34 @@ export async function bookAppointment(slotId: string) {
 export async function getBookingConfirmation() {
   await delay(120);
   return getStoredBooking();
+}
+
+async function _triggerPdfDownload(url: string, filename: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`PDF download failed: ${res.status} ${res.statusText}`);
+  }
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
+export async function downloadFormPdf(sessionId: string): Promise<void> {
+  await _triggerPdfDownload(
+    `${BASE_URL}/report/${sessionId}/pdf`,
+    `intake_form_${sessionId.slice(0, 8)}.pdf`,
+  );
+}
+
+export async function downloadSummaryPdf(sessionId: string): Promise<void> {
+  await _triggerPdfDownload(
+    `${BASE_URL}/report/${sessionId}/summary-pdf`,
+    `interview_summary_${sessionId.slice(0, 8)}.pdf`,
+  );
 }
 
 export function printReport(report: IntakeReport) {

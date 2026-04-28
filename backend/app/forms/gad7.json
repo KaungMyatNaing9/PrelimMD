@@ -1,0 +1,153 @@
+{
+  "form_id": "gad7",
+  "title": "GAD-7 Generalized Anxiety Disorder Scale",
+  "description": "Validated 7-item anxiety screening tool. Scored 0-21; higher scores indicate greater anxiety severity.",
+  "source_url": "https://uhs.fsu.edu/sites/g/files/upcbnu1651/files/docs/PHQ-9%20and%20GAD-7%20Form_a.pdf",
+  "version": "1.0",
+  "sections": [
+    {
+      "id": "gad7_s1",
+      "title": "Over the last two weeks",
+      "instructions": "Over the last two weeks, how often have you been bothered by the following problems?",
+      "questions": [
+        {
+          "id": "gad7_q1",
+          "text": "Feeling nervous, anxious, or on edge?",
+          "conversational_hint": "Over the past couple of weeks, how often have you felt nervous, anxious, or on edge?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "gad7_q2",
+          "text": "Not being able to stop or control worrying?",
+          "conversational_hint": "Have you found it hard to stop or control your worrying, even when you try?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "gad7_q3",
+          "text": "Worrying too much about different things?",
+          "conversational_hint": "Have you been worrying a lot about many different things at once?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "gad7_q4",
+          "text": "Trouble relaxing?",
+          "conversational_hint": "Have you had a hard time winding down or relaxing, even when you have the chance?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "gad7_q5",
+          "text": "Being so restless that it's hard to sit still?",
+          "conversational_hint": "Have you felt so restless or wound up that it was hard to sit still?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "gad7_q6",
+          "text": "Becoming easily annoyed or irritable?",
+          "conversational_hint": "Have you been feeling more irritable or easily annoyed than usual?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        },
+        {
+          "id": "gad7_q7",
+          "text": "Feeling afraid as if something awful might happen?",
+          "conversational_hint": "Have you had feelings of dread, like something bad is about to happen even when there's no clear reason?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            {"value": 0, "label": "Not at all"},
+            {"value": 1, "label": "Several days"},
+            {"value": 2, "label": "More than half the days"},
+            {"value": 3, "label": "Nearly every day"}
+          ],
+          "scoring_weight": 1,
+          "skip_if": null
+        }
+      ]
+    },
+    {
+      "id": "gad7_s2",
+      "title": "Functional impact",
+      "instructions": "If you checked off any problems, how difficult have these problems made it for you to do your work, take care of things at home, or get along with other people?",
+      "questions": [
+        {
+          "id": "gad7_q8",
+          "text": "How difficult have these problems made it to do your work, take care of things at home, or get along with other people?",
+          "conversational_hint": "Overall, how much have these feelings gotten in the way of your daily life — work, home, or relationships?",
+          "type": "single_choice",
+          "required": false,
+          "options": [
+            {"value": 0, "label": "Not difficult at all"},
+            {"value": 1, "label": "Somewhat difficult"},
+            {"value": 2, "label": "Very difficult"},
+            {"value": 3, "label": "Extremely difficult"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    }
+  ],
+  "scoring": {
+    "enabled": true,
+    "method": "sum",
+    "ranges": [
+      {"min": 0,  "max": 4,  "triage_level": "low",      "label": "Minimal anxiety"},
+      {"min": 5,  "max": 9,  "triage_level": "low",      "label": "Mild anxiety"},
+      {"min": 10, "max": 14, "triage_level": "moderate", "label": "Moderate anxiety"},
+      {"min": 15, "max": 21, "triage_level": "high",     "label": "Severe anxiety"}
+    ]
+  }
+}

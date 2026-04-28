@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{ form.title }} — PrelimMD</title>
+  <style>
+    /* ── Design tokens ── */
+    :root {
+      --text:           #152436;
+      --text-soft:      #4f6377;
+      --accent:         #155e63;
+      --accent-strong:  #0f4549;
+      --accent-warm:    #d67c47;
+      --success:        #2f6e4f;
+      --bg:             #fcf8f1;
+      --line:           rgba(20, 39, 59, 0.12);
+      --surface:        rgba(255, 252, 247, 0.95);
+    }
+
+    /* ── Reset & base ── */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
+      font-size: 10.5pt;
+      color: var(--text);
+      background: var(--bg);
+      padding: 0;
+    }
+
+    /* ── Top accent bar ── */
+    .top-bar {
+      height: 5px;
+      background: linear-gradient(90deg, var(--accent-strong), var(--accent-warm));
+    }
+
+    /* ── Page wrapper ── */
+    .page {
+      padding: 2rem 2.5rem 3rem;
+      max-width: 780px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 1.2rem 0 1rem;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 1.5rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 1rem;
+      background: linear-gradient(135deg, #0f4549, #d67c47);
+      color: #fff8ef;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      flex-shrink: 0;
+    }
+
+    .brand-text strong {
+      display: block;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.05rem;
+      color: var(--text);
+    }
+
+    .brand-text span {
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    .doc-meta {
+      text-align: right;
+      font-size: 0.78rem;
+      color: var(--text-soft);
+      line-height: 1.6;
+    }
+
+    /* ── Document title block ── */
+    .doc-title-block {
+      margin-bottom: 1.5rem;
+    }
+
+    .eyebrow {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      margin-bottom: 0.3rem;
+    }
+
+    .doc-title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.5rem;
+      color: var(--text);
+      margin-bottom: 0.4rem;
+    }
+
+    .doc-description {
+      color: var(--text-soft);
+      font-size: 0.88rem;
+      line-height: 1.55;
+    }
+
+    /* ── Triage badge ── */
+    .triage-row {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      margin-top: 0.75rem;
+    }
+
+    .triage-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .triage-low       { background: rgba(47, 110, 79, 0.14);  color: #2f6e4f; }
+    .triage-moderate  { background: rgba(214, 124, 71, 0.16); color: #8f4e25; }
+    .triage-high      { background: rgba(157, 49, 49, 0.14);  color: #8a2d2d; }
+    .triage-emergency { background: rgba(157, 49, 49, 0.18);  color: #8a2d2d; }
+
+    .triage-label {
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    /* ── Section card ── */
+    .section-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      margin-bottom: 1.2rem;
+      overflow: hidden;
+      background: var(--surface);
+      page-break-inside: avoid;
+    }
+
+    .section-header {
+      background: linear-gradient(135deg, rgba(21, 94, 99, 0.07), rgba(214, 124, 71, 0.05));
+      border-bottom: 1px solid var(--line);
+      padding: 0.65rem 1rem;
+    }
+
+    .section-title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 0.98rem;
+      color: var(--accent-strong);
+    }
+
+    .section-instructions {
+      font-size: 0.78rem;
+      color: var(--text-soft);
+      margin-top: 0.2rem;
+    }
+
+    /* ── Question rows ── */
+    .question-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .question-table tr {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .question-table tr:last-child {
+      border-bottom: none;
+    }
+
+    .question-table tr.unanswered .answer-cell {
+      color: var(--text-soft);
+      font-style: italic;
+    }
+
+    .question-cell {
+      padding: 0.65rem 1rem;
+      width: 52%;
+      vertical-align: top;
+      font-size: 0.88rem;
+      color: var(--text);
+      border-right: 1px solid var(--line);
+    }
+
+    .answer-cell {
+      padding: 0.65rem 1rem;
+      width: 48%;
+      vertical-align: top;
+      font-size: 0.88rem;
+      color: var(--text);
+    }
+
+    .q-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      margin-bottom: 0.2rem;
+    }
+
+    /* ── Footer ── */
+    .doc-footer {
+      margin-top: 2rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.72rem;
+      color: var(--text-soft);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── Print ── */
+    @page {
+      size: A4;
+      margin: 1cm 1.5cm;
+    }
+
+    @media print {
+      .section-card { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar"></div>
+  <div class="page">
+
+    <!-- Header -->
+    <header class="doc-header">
+      <div class="brand">
+        <div class="brand-mark">PM</div>
+        <div class="brand-text">
+          <strong>PrelimMD</strong>
+          <span>Clinical intake system</span>
+        </div>
+      </div>
+      <div class="doc-meta">
+        <div>Filled intake form</div>
+        <div>Session: {{ meta.session_id[:8] }}…</div>
+        <div>Generated: {{ generated_at }}</div>
+      </div>
+    </header>
+
+    <!-- Document title -->
+    <div class="doc-title-block">
+      <p class="eyebrow">Clinician copy — patient answers</p>
+      <h1 class="doc-title">{{ form.title }}</h1>
+      {% if form.description %}
+        <p class="doc-description">{{ form.description }}</p>
+      {% endif %}
+
+      {% if meta.triage_level %}
+        <div class="triage-row">
+          <span class="triage-badge triage-{{ meta.triage_level }}">{{ meta.triage_level }}</span>
+          <span class="triage-label">Triage level</span>
+          {% if meta.triage_flags %}
+            <span class="triage-label">— {{ meta.triage_flags | join(", ") }}</span>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Sections -->
+    {% for section in form.sections %}
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">{{ section.title }}</div>
+          {% if section.instructions %}
+            <div class="section-instructions">{{ section.instructions }}</div>
+          {% endif %}
+        </div>
+        <table class="question-table">
+          {% for question in section.questions %}
+            {% set raw_answer = answers.get(question.id) %}
+            {% set has_answer = raw_answer is not none and raw_answer != "" %}
+            <tr class="{{ '' if has_answer else 'unanswered' }}">
+              <td class="question-cell">
+                <div class="q-label">Question</div>
+                {{ question.text }}
+              </td>
+              <td class="answer-cell">
+                <div class="q-label">Patient answer</div>
+                {% if has_answer %}
+                  {% if question.type in ("single_choice", "yes_no") and question.options %}
+                    {% set matched = namespace(label="") %}
+                    {% for opt in question.options %}
+                      {% if opt.value | string == raw_answer | string %}
+                        {% set matched.label = opt.label %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ matched.label if matched.label else raw_answer }}
+                  {% elif question.type == "multi_choice" and question.options and raw_answer is iterable and raw_answer is not string %}
+                    {% set labels = [] %}
+                    {% for opt in question.options %}
+                      {% if opt.value in raw_answer %}
+                        {% set _ = labels.append(opt.label) %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ labels | join(", ") if labels else raw_answer | join(", ") }}
+                  {% else %}
+                    {{ raw_answer }}
+                  {% endif %}
+                {% else %}
+                  Not answered
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
+    {% endfor %}
+
+    <!-- Footer -->
+    <footer class="doc-footer">
+      <span>PrelimMD — Confidential patient intake record</span>
+      <span>Form version {{ form.version }} · Session {{ meta.session_id[:8] }}</span>
+    </footer>
+
+  </div>
+</body>
+</html>

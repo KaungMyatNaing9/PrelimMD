@@ -2,11 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getReport, printReport, type IntakeReport } from "@/lib/api";
+import {
+  downloadFormPdf,
+  downloadSummaryPdf,
+  getReport,
+  isMockApiEnabled,
+  printReport,
+  type IntakeReport,
+} from "@/lib/api";
 
 export default function ReportViewer() {
   const [report, setReport] = useState<IntakeReport | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [downloadingForm, setDownloadingForm] = useState(false);
+  const [downloadingSummary, setDownloadingSummary] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -60,10 +70,48 @@ export default function ReportViewer() {
               <p>{report.notes}</p>
             </article>
           </div>
+          {pdfError && <p className="error-text" style={{ fontSize: "0.85rem" }}>{pdfError}</p>}
           <div className="button-row">
-            <button type="button" className="button" onClick={() => printReport(report)}>
-              Print / save as PDF
-            </button>
+            {isMockApiEnabled ? (
+              <button type="button" className="button" onClick={() => printReport(report)}>
+                Print / save as PDF
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="button"
+                  disabled={downloadingForm}
+                  onClick={() => {
+                    setDownloadingForm(true);
+                    setPdfError(null);
+                    downloadFormPdf(report.sessionId)
+                      .catch((err: unknown) =>
+                        setPdfError(err instanceof Error ? err.message : "Download failed.")
+                      )
+                      .finally(() => setDownloadingForm(false));
+                  }}
+                >
+                  {downloadingForm ? "Generating…" : "Download filled form (PDF)"}
+                </button>
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={downloadingSummary}
+                  onClick={() => {
+                    setDownloadingSummary(true);
+                    setPdfError(null);
+                    downloadSummaryPdf(report.sessionId)
+                      .catch((err: unknown) =>
+                        setPdfError(err instanceof Error ? err.message : "Download failed.")
+                      )
+                      .finally(() => setDownloadingSummary(false));
+                  }}
+                >
+                  {downloadingSummary ? "Generating…" : "Download summary (PDF)"}
+                </button>
+              </>
+            )}
             <Link href="/booking" className="button secondary">
               Continue to booking
             </Link>
@@ -101,7 +149,7 @@ export default function ReportViewer() {
               ))}
             </ul>
           ) : (
-            <p className="supporting-text">The mock report captured all demo fields.</p>
+            <p className="supporting-text">All fields were captured.</p>
           )}
         </section>
 

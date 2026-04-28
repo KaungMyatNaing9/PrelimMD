@@ -1,0 +1,407 @@
+{
+  "form_id": "general_intake",
+  "title": "General Patient Intake",
+  "description": "Comprehensive new-patient intake covering demographics, past medical history, surgical history, medications, allergies, social history, family history, and review of systems. Based on the Stanford Adult Patient Questionnaire and WakeMed Urgent Care intake form.",
+  "source_url": "https://stanfordhealthcare.org/content/dam/SHC/clinics/family-medicine-associates-san-jose/docs/shc-adult-patient-questionnaire.pdf",
+  "version": "1.0",
+  "sections": [
+    {
+      "id": "gi_s1",
+      "title": "Reason for visit",
+      "instructions": "Please describe the main reason you are seeking care today.",
+      "questions": [
+        {
+          "id": "gi_q1",
+          "text": "What is the main reason for your visit today?",
+          "conversational_hint": "Let's start with the reason you're here — what's the main thing you'd like addressed today?",
+          "type": "free_text",
+          "required": true,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q2",
+          "text": "Is this a new problem or an ongoing one?",
+          "conversational_hint": "Is this something new, or is it a problem you've been dealing with for a while?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            {"value": "new",      "label": "New problem"},
+            {"value": "ongoing",  "label": "Ongoing or recurring problem"},
+            {"value": "followup", "label": "Follow-up for a previously diagnosed condition"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    },
+    {
+      "id": "gi_s2",
+      "title": "Past medical history",
+      "instructions": "Please indicate any medical conditions you have been diagnosed with, past or present.",
+      "questions": [
+        {
+          "id": "gi_q3",
+          "text": "Do you have any of the following diagnosed conditions? (Select all that apply)",
+          "conversational_hint": "Have you ever been diagnosed with any of the following? Go ahead and mention everything, even if it's well-controlled.",
+          "type": "multi_choice",
+          "required": false,
+          "options": [
+            {"value": "alcohol_drug",     "label": "Alcohol or substance use disorder"},
+            {"value": "anemia",           "label": "Anemia"},
+            {"value": "anxiety",          "label": "Anxiety"},
+            {"value": "arthritis",        "label": "Arthritis"},
+            {"value": "asthma",           "label": "Asthma"},
+            {"value": "afib",             "label": "Atrial fibrillation"},
+            {"value": "cancer",           "label": "Cancer"},
+            {"value": "copd",             "label": "COPD / emphysema"},
+            {"value": "dementia",         "label": "Dementia"},
+            {"value": "depression",       "label": "Depression"},
+            {"value": "diabetes",         "label": "Diabetes"},
+            {"value": "heart_attack",     "label": "Heart attack"},
+            {"value": "cad",              "label": "Coronary artery disease"},
+            {"value": "chf",              "label": "Heart failure / CHF"},
+            {"value": "hypertension",     "label": "High blood pressure"},
+            {"value": "hyperlipidemia",   "label": "High cholesterol"},
+            {"value": "hypothyroid",      "label": "Hypothyroidism (low thyroid)"},
+            {"value": "hyperthyroid",     "label": "Hyperthyroidism (high thyroid)"},
+            {"value": "kidney_disease",   "label": "Kidney disease"},
+            {"value": "liver_disease",    "label": "Liver disease"},
+            {"value": "migraines",        "label": "Migraines"},
+            {"value": "osteoporosis",     "label": "Osteoporosis"},
+            {"value": "psychiatric",      "label": "Other psychiatric condition"},
+            {"value": "seizure",          "label": "Seizure disorder / epilepsy"},
+            {"value": "sleep_apnea",      "label": "Sleep apnea"},
+            {"value": "stroke",           "label": "Stroke"},
+            {"value": "blood_clots",      "label": "Blood clots (DVT / PE)"},
+            {"value": "neuropathy",       "label": "Neuropathy"},
+            {"value": "none",             "label": "None of the above"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q4",
+          "text": "If you have cancer, what type?",
+          "conversational_hint": "You mentioned cancer — what type were you diagnosed with, if you don't mind sharing?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": {
+            "question_id": "gi_q3",
+            "condition": "not_equals",
+            "value": "cancer"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gi_s3",
+      "title": "Surgical history",
+      "instructions": "List any surgeries you have had, including the approximate year.",
+      "questions": [
+        {
+          "id": "gi_q5",
+          "text": "Have you had any surgeries in the past?",
+          "conversational_hint": "Have you had any surgeries or procedures done — anything from a minor outpatient procedure to a major surgery?",
+          "type": "yes_no",
+          "required": true,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q6",
+          "text": "Please list your past surgeries and the approximate year each was performed.",
+          "conversational_hint": "Can you list the surgeries you've had and roughly when they were done?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": {
+            "question_id": "gi_q5",
+            "condition": "equals",
+            "value": "no"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gi_s4",
+      "title": "Medications",
+      "instructions": "List all medications you are currently taking, including prescription, over-the-counter, and supplements.",
+      "questions": [
+        {
+          "id": "gi_q7",
+          "text": "Are you currently taking any medications, vitamins, or supplements?",
+          "conversational_hint": "Are you currently taking any medications — prescription, over-the-counter, vitamins, or supplements?",
+          "type": "yes_no",
+          "required": true,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q8",
+          "text": "Please list your current medications, doses, and what you take them for.",
+          "conversational_hint": "Can you walk me through the medications you're on — the name, dose if you know it, and what it's for?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": {
+            "question_id": "gi_q7",
+            "condition": "equals",
+            "value": "no"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gi_s5",
+      "title": "Allergies",
+      "instructions": "List any known drug or food allergies and the reactions they cause.",
+      "questions": [
+        {
+          "id": "gi_q9",
+          "text": "Do you have any known allergies to medications, foods, or environmental substances?",
+          "conversational_hint": "Do you have any allergies — to medications, foods, or anything in the environment like pollen or latex?",
+          "type": "yes_no",
+          "required": true,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q10",
+          "text": "Please list your known allergies and describe the reaction each causes.",
+          "conversational_hint": "What are you allergic to, and what kind of reaction does each one cause?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": {
+            "question_id": "gi_q9",
+            "condition": "equals",
+            "value": "no"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gi_s6",
+      "title": "Social history",
+      "instructions": "These questions help us understand lifestyle factors that affect your health.",
+      "questions": [
+        {
+          "id": "gi_q11",
+          "text": "Do you currently use tobacco products?",
+          "conversational_hint": "Do you smoke or use any tobacco products — cigarettes, cigars, pipe, chewing tobacco, or vaping?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            {"value": "never",   "label": "Never"},
+            {"value": "former",  "label": "Former — quit"},
+            {"value": "current", "label": "Current user"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q12",
+          "text": "How much do you smoke, and for how many years?",
+          "conversational_hint": "About how much do you smoke per day, and how long have you been smoking?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": {
+            "question_id": "gi_q11",
+            "condition": "not_equals",
+            "value": "current"
+          }
+        },
+        {
+          "id": "gi_q13",
+          "text": "Do you drink alcohol?",
+          "conversational_hint": "Do you drink alcohol at all?",
+          "type": "yes_no",
+          "required": true,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q14",
+          "text": "How often do you drink, and how many drinks on a typical day?",
+          "conversational_hint": "How often would you say you drink, and on a day when you do drink, roughly how many drinks?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": {
+            "question_id": "gi_q13",
+            "condition": "equals",
+            "value": "no"
+          }
+        },
+        {
+          "id": "gi_q15",
+          "text": "How would you describe your level of physical activity?",
+          "conversational_hint": "How physically active are you on a typical week?",
+          "type": "single_choice",
+          "required": false,
+          "options": [
+            {"value": "sedentary",   "label": "Sedentary — little to no exercise"},
+            {"value": "mild",        "label": "Mild — walking, light activity"},
+            {"value": "moderate",    "label": "Moderate — 1-3 times per week"},
+            {"value": "vigorous",    "label": "Vigorous — more than 3 times per week"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q16",
+          "text": "Have you used recreational or street drugs in the past two years?",
+          "conversational_hint": "Have you used any recreational drugs in the past couple of years?",
+          "type": "yes_no",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    },
+    {
+      "id": "gi_s7",
+      "title": "Family history",
+      "instructions": "Please indicate any significant health conditions in your immediate family.",
+      "questions": [
+        {
+          "id": "gi_q17",
+          "text": "Do any of your close family members (parents, siblings, grandparents) have or have had any significant health conditions?",
+          "conversational_hint": "Do any of your close relatives — parents, siblings, grandparents — have any significant health conditions like heart disease, diabetes, cancer, or stroke?",
+          "type": "yes_no",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q18",
+          "text": "Please describe the family member and their condition.",
+          "conversational_hint": "Can you tell me which family member and what condition — for example, 'My father had a heart attack at 55' or 'My mother has type 2 diabetes'?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": {
+            "question_id": "gi_q17",
+            "condition": "equals",
+            "value": "no"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gi_s8",
+      "title": "Review of systems",
+      "instructions": "Are you currently experiencing any of the following symptoms? Check all that apply.",
+      "questions": [
+        {
+          "id": "gi_q19",
+          "text": "General symptoms",
+          "conversational_hint": "Let me run through a quick symptom check. Starting with general symptoms — are you experiencing fatigue, unintended weight loss or gain of more than 10 pounds, or fever?",
+          "type": "multi_choice",
+          "required": false,
+          "options": [
+            {"value": "fatigue",      "label": "Fatigue"},
+            {"value": "weight_gain",  "label": "Weight gain of more than 10 lbs"},
+            {"value": "weight_loss",  "label": "Weight loss of more than 10 lbs"},
+            {"value": "fever",        "label": "Fever"},
+            {"value": "none",         "label": "None"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q20",
+          "text": "Cardiovascular and respiratory symptoms",
+          "conversational_hint": "What about heart or breathing symptoms — chest pain, shortness of breath, racing heartbeat, or swollen ankles?",
+          "type": "multi_choice",
+          "required": false,
+          "options": [
+            {"value": "chest_pain",    "label": "Chest pain"},
+            {"value": "palpitations",  "label": "Racing or irregular heartbeat"},
+            {"value": "sob",           "label": "Shortness of breath"},
+            {"value": "leg_swelling",  "label": "Ankle or leg swelling"},
+            {"value": "wheezing",      "label": "Wheezing"},
+            {"value": "cough",         "label": "Persistent cough"},
+            {"value": "none",          "label": "None"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q21",
+          "text": "Neurological symptoms",
+          "conversational_hint": "Any neurological symptoms — headaches, dizziness, numbness or tingling, or fainting spells?",
+          "type": "multi_choice",
+          "required": false,
+          "options": [
+            {"value": "headaches",    "label": "Headaches"},
+            {"value": "dizziness",    "label": "Dizziness or vertigo"},
+            {"value": "numbness",     "label": "Numbness or tingling"},
+            {"value": "syncope",      "label": "Passing out or near-fainting"},
+            {"value": "seizures",     "label": "Seizures"},
+            {"value": "tremor",       "label": "Tremor"},
+            {"value": "none",         "label": "None"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q22",
+          "text": "Gastrointestinal symptoms",
+          "conversational_hint": "Any stomach or bowel symptoms — abdominal pain, nausea, diarrhea, constipation, or heartburn?",
+          "type": "multi_choice",
+          "required": false,
+          "options": [
+            {"value": "abdominal_pain",  "label": "Abdominal pain"},
+            {"value": "nausea",          "label": "Nausea or vomiting"},
+            {"value": "diarrhea",        "label": "Diarrhea"},
+            {"value": "constipation",    "label": "Constipation"},
+            {"value": "heartburn",       "label": "Heartburn or acid reflux"},
+            {"value": "rectal_bleeding", "label": "Rectal bleeding"},
+            {"value": "none",            "label": "None"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "gi_q23",
+          "text": "Psychiatric symptoms",
+          "conversational_hint": "Any mood or mental health concerns — depression, anxiety, insomnia, or mood swings?",
+          "type": "multi_choice",
+          "required": false,
+          "options": [
+            {"value": "depression",   "label": "Depression"},
+            {"value": "anxiety",      "label": "Anxiety"},
+            {"value": "insomnia",     "label": "Insomnia or sleep problems"},
+            {"value": "mood_swings",  "label": "Mood swings"},
+            {"value": "none",         "label": "None"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    }
+  ],
+  "scoring": {
+    "enabled": false,
+    "method": "sum",
+    "ranges": []
+  }
+}

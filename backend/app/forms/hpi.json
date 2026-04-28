@@ -1,0 +1,228 @@
+{
+  "form_id": "hpi",
+  "title": "History of Present Illness (OPQRST)",
+  "description": "Structured history of the chief complaint using the standard clinical OPQRST framework: Onset, Provocation/Palliation, Quality, Radiation, Severity, Timing. Used to characterize any acute symptom or reason for visit.",
+  "source_url": "",
+  "version": "1.0",
+  "sections": [
+    {
+      "id": "hpi_s1",
+      "title": "Chief complaint",
+      "instructions": "Tell us about the main reason you are seeking care today.",
+      "questions": [
+        {
+          "id": "hpi_q1",
+          "text": "What is the main reason you are seeking care today?",
+          "conversational_hint": "To get started, can you tell me in your own words what brought you in today?",
+          "type": "free_text",
+          "required": true,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    },
+    {
+      "id": "hpi_s2",
+      "title": "Onset",
+      "instructions": "When did the problem begin and how did it start?",
+      "questions": [
+        {
+          "id": "hpi_q2",
+          "text": "When did this problem start?",
+          "conversational_hint": "When did you first notice this — was it today, a few days ago, or has it been going on longer?",
+          "type": "free_text",
+          "required": true,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "hpi_q3",
+          "text": "Did this problem come on suddenly or gradually?",
+          "conversational_hint": "Did it come on all of a sudden, or did it develop slowly over time?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            {"value": "sudden",   "label": "Sudden — came on quickly"},
+            {"value": "gradual",  "label": "Gradual — developed slowly"},
+            {"value": "unknown",  "label": "Not sure"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    },
+    {
+      "id": "hpi_s3",
+      "title": "Provocation and palliation",
+      "instructions": "What makes it better or worse?",
+      "questions": [
+        {
+          "id": "hpi_q4",
+          "text": "Is there anything that makes the problem worse?",
+          "conversational_hint": "Is there anything that seems to make it worse — like certain movements, activities, foods, or times of day?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "hpi_q5",
+          "text": "Is there anything that makes the problem better or gives you relief?",
+          "conversational_hint": "Has anything helped at all — like rest, medication, ice, heat, or a change in position?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    },
+    {
+      "id": "hpi_s4",
+      "title": "Quality",
+      "instructions": "Describe the character or quality of the symptom.",
+      "questions": [
+        {
+          "id": "hpi_q6",
+          "text": "How would you describe what the problem feels like?",
+          "conversational_hint": "If it's a pain or discomfort, how would you describe what it feels like — sharp, dull, burning, pressure, aching, cramping, or something else?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    },
+    {
+      "id": "hpi_s5",
+      "title": "Radiation",
+      "instructions": "Does the problem stay in one place or spread?",
+      "questions": [
+        {
+          "id": "hpi_q7",
+          "text": "Does the problem stay in one location or does it move or spread anywhere?",
+          "conversational_hint": "Does it stay in one spot, or does it travel or radiate to another part of your body?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    },
+    {
+      "id": "hpi_s6",
+      "title": "Severity",
+      "instructions": "How bad is the problem right now?",
+      "questions": [
+        {
+          "id": "hpi_q8",
+          "text": "On a scale of 0 to 10, how severe is this problem right now? (0 = no problem, 10 = worst imaginable)",
+          "conversational_hint": "On a scale of 0 to 10, with 0 being no problem at all and 10 being the worst you can imagine, where would you rate this right now?",
+          "type": "numeric",
+          "required": true,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "hpi_q9",
+          "text": "How does this compare to when it first started — better, worse, or about the same?",
+          "conversational_hint": "Compared to when it first started, would you say it's getting better, getting worse, or staying about the same?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            {"value": "better",  "label": "Getting better"},
+            {"value": "worse",   "label": "Getting worse"},
+            {"value": "same",    "label": "About the same"},
+            {"value": "varies",  "label": "It comes and goes"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    },
+    {
+      "id": "hpi_s7",
+      "title": "Timing",
+      "instructions": "When does the problem occur and how long does it last?",
+      "questions": [
+        {
+          "id": "hpi_q10",
+          "text": "Is this problem constant, or does it come and go?",
+          "conversational_hint": "Is it there all the time, or does it come and go?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            {"value": "constant",      "label": "Constant — always present"},
+            {"value": "intermittent",  "label": "Intermittent — comes and goes"},
+            {"value": "episodic",      "label": "Episodic — distinct attacks or episodes"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "hpi_q11",
+          "text": "When it is present, how long does an episode typically last?",
+          "conversational_hint": "When it does come on, how long does it tend to last — seconds, minutes, hours?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": {
+            "question_id": "hpi_q10",
+            "condition": "equals",
+            "value": "constant"
+          }
+        }
+      ]
+    },
+    {
+      "id": "hpi_s8",
+      "title": "Associated symptoms and red flags",
+      "instructions": "Are there any other symptoms accompanying this problem?",
+      "questions": [
+        {
+          "id": "hpi_q12",
+          "text": "Are you experiencing any of the following alongside your main complaint?",
+          "conversational_hint": "Along with what you described, are you also experiencing any of the following?",
+          "type": "multi_choice",
+          "required": false,
+          "options": [
+            {"value": "fever",            "label": "Fever or chills"},
+            {"value": "sob",              "label": "Shortness of breath or difficulty breathing"},
+            {"value": "chest_pain",       "label": "Chest pain or pressure"},
+            {"value": "nausea",           "label": "Nausea or vomiting"},
+            {"value": "dizziness",        "label": "Dizziness or lightheadedness"},
+            {"value": "syncope",          "label": "Fainting or near-fainting"},
+            {"value": "weakness",         "label": "Weakness or numbness"},
+            {"value": "vision",           "label": "Vision changes"},
+            {"value": "bleeding",         "label": "Unusual bleeding"},
+            {"value": "none",             "label": "None of the above"}
+          ],
+          "scoring_weight": 0,
+          "skip_if": null
+        },
+        {
+          "id": "hpi_q13",
+          "text": "Is there anything else about your symptoms you think is important for the clinician to know?",
+          "conversational_hint": "Is there anything else you'd like to share about what you're experiencing that you think the clinician should know?",
+          "type": "free_text",
+          "required": false,
+          "options": [],
+          "scoring_weight": 0,
+          "skip_if": null
+        }
+      ]
+    }
+  ],
+  "scoring": {
+    "enabled": false,
+    "method": "sum",
+    "ranges": []
+  }
+}
