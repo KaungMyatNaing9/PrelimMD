@@ -33,6 +33,9 @@ _SESSIONS: dict[str, "_SessionState"] = {}
 # Directory where pre-converted form JSON files live
 _FORMS_DIR = Path(__file__).parent.parent / "forms"
 
+# Runtime-registered forms (uploaded via the clinician upload endpoint)
+_DYNAMIC_FORMS: dict[str, FormSchema] = {}
+
 # Red-flag patterns that always raise an emergency triage flag
 _EMERGENCY_PATTERNS = [
     "can't breathe", "cannot breathe", "can not breathe",
@@ -134,11 +137,19 @@ class _SessionState:
 
 # ── Form loader ───────────────────────────────────────────────────────────────
 
+def register_form(form: FormSchema) -> str:
+    """Register an uploaded form in the dynamic in-memory store. Returns form_id."""
+    _DYNAMIC_FORMS[form.form_id] = form
+    return form.form_id
+
+
 def load_form(form_id: str) -> FormSchema:
-    """Load a FormSchema from the pre-converted JSON files in app/forms/."""
+    """Load a FormSchema, checking dynamically registered forms before disk."""
+    if form_id in _DYNAMIC_FORMS:
+        return _DYNAMIC_FORMS[form_id]
     form_path = _FORMS_DIR / f"{form_id}.json"
     if not form_path.exists():
-        available = [p.stem for p in _FORMS_DIR.glob("*.json")]
+        available = list(_DYNAMIC_FORMS.keys()) + [p.stem for p in _FORMS_DIR.glob("*.json")]
         raise ValueError(
             f"Form '{form_id}' not found. Available forms: {available}"
         )
@@ -149,6 +160,12 @@ def load_form(form_id: str) -> FormSchema:
 def list_forms() -> list[dict]:
     """Return a brief listing of all available form IDs and titles."""
     forms = []
+    for form in _DYNAMIC_FORMS.values():
+        forms.append({
+            "form_id": form.form_id,
+            "title": form.title,
+            "description": form.description,
+        })
     for path in sorted(_FORMS_DIR.glob("*.json")):
         try:
             with path.open() as f:
@@ -168,10 +185,17 @@ def list_forms() -> list[dict]:
 def _build_system_prompt(state: _SessionState) -> str:
     current = state.current_question
 
-    # Summarize remaining questions so the model knows what's left without
-    # receiving the entire form on every turn
-    remaining = state.all_questions[state.current_question_index:]
-    remaining_summary = json.dumps(
+    # Next question is one index ahead of the current position
+    next_idx = state.current_question_index + 1
+    next_question = (
+        state.all_questions[next_idx]
+        if next_idx < len(state.all_questions)
+        else None
+    )
+
+    # All questions still ahead (starting after current) for broad context
+    upcoming = state.all_questions[next_idx:]
+    upcoming_summary = json.dumps(
         [
             {
                 "id": q.id,
@@ -181,7 +205,7 @@ def _build_system_prompt(state: _SessionState) -> str:
                 "options": [o.model_dump() for o in q.options],
                 "required": q.required,
             }
-            for q in remaining
+            for q in upcoming
         ],
         indent=2,
     )
@@ -189,6 +213,23 @@ def _build_system_prompt(state: _SessionState) -> str:
     answered_summary = json.dumps(
         {qid: val for qid, val in state.answers.items()},
         indent=2,
+    )
+
+    def _q_json(q: Optional[QuestionSchema]) -> str:
+        if q is None:
+            return "null"
+        return json.dumps({
+            "id": q.id,
+            "text": q.text,
+            "hint": q.conversational_hint or q.text,
+            "type": q.type,
+            "options": [o.model_dump() for o in q.options],
+        }, indent=2)
+
+    next_question_block = (
+        _q_json(next_question)
+        if next_question
+        else "null — this was the last question. Set form_complete=true and give a warm closing."
     )
 
     return textwrap.dedent(f"""
@@ -202,21 +243,22 @@ def _build_system_prompt(state: _SessionState) -> str:
         Already answered (do not re-ask these):
         {answered_summary}
 
-        Remaining questions in order:
-        {remaining_summary}
+        Question the patient is answering right now:
+        {_q_json(current) if current else "null — all questions have been answered"}
 
-        Current question to address:
-        {json.dumps({
-            "id": current.id if current else None,
-            "text": current.text if current else None,
-            "hint": (current.conversational_hint or current.text) if current else None,
-            "type": current.type if current else None,
-            "options": [o.model_dump() for o in current.options] if current else [],
-        }, indent=2) if current else "null — all questions have been answered"}
+        Next question to ask in your ai_response:
+        {next_question_block}
+
+        All upcoming questions for context (do not skip ahead):
+        {upcoming_summary}
 
         INSTRUCTIONS:
-        1. Respond warmly and conversationally using the "hint" field as your phrasing guide.
-        2. After the patient replies, extract their answer and map it to the current question's type:
+        1. In ai_response: briefly acknowledge the patient's answer to the current question,
+           then immediately ask the NEXT question using its "hint" as your phrasing guide.
+           Never end ai_response without asking the next question — do not say "let's continue"
+           or similar without actually posing the question. If next question is null, give a
+           warm closing statement and set form_complete=true.
+        2. Extract the patient's answer and map it to the current question's type:
            - scale / single_choice: return the numeric value or option value
            - multi_choice: return a list of selected option values
            - yes_no: return "yes" or "no"
@@ -232,10 +274,10 @@ def _build_system_prompt(state: _SessionState) -> str:
 
         Required JSON output schema:
         {{
-          "ai_response": "string — what you say to the patient next",
-          "question_answered_id": "string — the question ID just answered (current question id)",
+          "ai_response": "string — acknowledgment of current answer + the next question asked",
+          "question_answered_id": "string — the id of the question just answered",
           "extracted_value": "any — parsed answer value",
-          "next_question_id": "string or null — the id of the next question to ask",
+          "next_question_id": "string or null — the id of the next question (from next question block)",
           "triage_flag": false,
           "triage_reason": null,
           "form_complete": false

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import PdfUploadDropzone from "@/components/PdfUploadDropzone";
 
 const featureCards = [
   {
@@ -58,6 +59,20 @@ export default function HomePage() {
             </article>
           </div>
         </div>
+      </section>
+
+      <section className="panel spotlight-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Clinician setup</p>
+            <h2>Load a custom intake form</h2>
+          </div>
+        </div>
+        <p className="supporting-text">
+          Drop any clinical intake PDF below. The AI parses it into a structured question form and
+          drives the patient interview automatically.
+        </p>
+        <PdfUploadDropzone />
       </section>
 
       <section className="card-grid">

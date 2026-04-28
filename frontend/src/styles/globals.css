@@ -560,3 +560,84 @@ textarea {
     padding-top: 1.25rem;
   }
 }
+
+/* ── Clinician PDF dropzone ───────────────────────────────────────────────── */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 11rem;
+  padding: 2rem 1.5rem;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.dropzone:hover,
+.dropzone--over {
+  border-color: var(--accent);
+  background: rgba(21, 94, 99, 0.05);
+}
+
+.dropzone--parsing {
+  cursor: default;
+  border-style: solid;
+  border-color: var(--accent);
+}
+
+.dropzone--error {
+  border-color: #c0392b;
+  cursor: default;
+}
+
+.dropzone--notice {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.dropzone__input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dropzone__icon {
+  color: var(--accent);
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
+.dropzone__label {
+  margin: 0;
+  font-size: 0.97rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dropzone__sub {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-soft);
+}
+
+.dropzone__spinner {
+  display: block;
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid rgba(21, 94, 99, 0.18);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

@@ -228,6 +228,22 @@ function deriveRoutingHint(riskLevel: TriageLevel) {
   }
 }
 
+function liveSessionToState(session: LiveSession): InterviewSessionState {
+  const lastAiTurn = [...session.transcript].reverse().find((t) => t.role === "ai");
+  return {
+    sessionId: session.sessionId,
+    createdAt: session.createdAt,
+    status: session.status,
+    currentQuestion: session.status === "completed" ? null : (lastAiTurn?.content ?? null),
+    transcript: session.transcript,
+    extractedFields: [],
+    triageLevel: session.triageLevel,
+    routingHint: session.routingHint,
+    progress: session.progress,
+    reportReady: session.status === "completed",
+  };
+}
+
 function sessionToState(session: StoredSession): InterviewSessionState {
   return {
     sessionId: session.sessionId,
@@ -413,6 +429,23 @@ function buildSlots(riskLevel: TriageLevel) {
   ] satisfies AppointmentSlot[];
 }
 
+export async function uploadFormPdf(file: File): Promise<{ form_id: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const title = file.name.replace(/\.pdf$/i, "").replace(/[-_]+/g, " ").trim();
+  const params = new URLSearchParams({ title });
+  const response = await fetch(`${BASE_URL}/forms/parse/upload?${params}`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`PDF upload failed: ${detail}`);
+  }
+  const data = (await response.json()) as { form: { form_id: string } };
+  return { form_id: data.form.form_id };
+}
+
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -427,6 +460,11 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
 }
 
 export function getInterviewSession() {
+  if (!isMockApiEnabled) {
+    const liveSession = safeRead<LiveSession>(LIVE_SESSION_KEY);
+    if (liveSession) return liveSessionToState(liveSession);
+    return null;
+  }
   const session = getStoredSession();
   return session ? sessionToState(session) : null;
 }
