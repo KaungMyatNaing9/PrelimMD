@@ -2,20 +2,29 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getReport, printReport, type IntakeReport } from "@/lib/api";
+import {
+  downloadReportPdf,
+  getInterviewSession,
+  getLiveSessionId,
+  isMockApiEnabled,
+  getReport,
+  type IntakeReport,
+} from "@/lib/api";
 
 export default function ReportViewer() {
   const [report, setReport] = useState<IntakeReport | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
-    void getReport()
+    // In live mode, always pull sessionId from the stored live session
+    const sessionId = isMockApiEnabled ? undefined : (getLiveSessionId() ?? undefined);
+
+    void getReport(sessionId)
       .then((nextReport) => {
-        if (isMounted) {
-          setReport(nextReport);
-        }
+        if (isMounted) setReport(nextReport);
       })
       .catch((error) => {
         if (isMounted) {
@@ -30,12 +39,26 @@ export default function ReportViewer() {
     };
   }, []);
 
+  async function handleDownloadPdf() {
+    if (!report || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      await downloadReportPdf(report);
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? `PDF download failed: ${err.message}` : "PDF download failed."
+      );
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
   if (errorMessage) {
-    return <section className="panel error-text">{errorMessage}</section>;
+    return <section className="panel"><p className="error-text">{errorMessage}</p></section>;
   }
 
   if (!report) {
-    return <section className="panel">Loading report summary...</section>;
+    return <section className="panel"><p>Preparing your report…</p></section>;
   }
 
   return (
@@ -61,8 +84,13 @@ export default function ReportViewer() {
             </article>
           </div>
           <div className="button-row">
-            <button type="button" className="button" onClick={() => printReport(report)}>
-              Print / save as PDF
+            <button
+              type="button"
+              className="button"
+              onClick={handleDownloadPdf}
+              disabled={isDownloading}
+            >
+              {isDownloading ? "Downloading…" : "Download PDF"}
             </button>
             <Link href="/booking" className="button secondary">
               Continue to booking
@@ -78,20 +106,24 @@ export default function ReportViewer() {
             </div>
           </div>
           <div className="field-list">
-            {report.extractedFields.map((field) => (
-              <article key={field.label} className="field-card">
-                <p className="label">{field.label}</p>
-                <p>{field.value}</p>
-              </article>
-            ))}
+            {report.extractedFields.length > 0 ? (
+              report.extractedFields.map((field) => (
+                <article key={field.label} className="field-card">
+                  <p className="label">{field.label}</p>
+                  <p>{field.value}</p>
+                </article>
+              ))
+            ) : (
+              <p className="supporting-text">No structured fields extracted yet.</p>
+            )}
           </div>
         </section>
 
         <section className="panel">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Missing information</p>
-              <h2>Gaps to review</h2>
+              <p className="eyebrow">Information gaps</p>
+              <h2>Missing details</h2>
             </div>
           </div>
           {report.missingInformation.length > 0 ? (
@@ -101,7 +133,7 @@ export default function ReportViewer() {
               ))}
             </ul>
           ) : (
-            <p className="supporting-text">The mock report captured all demo fields.</p>
+            <p className="supporting-text">All key fields captured — nothing missing.</p>
           )}
         </section>
 
@@ -135,7 +167,7 @@ export default function ReportViewer() {
             >
               <div className="message-bubble">
                 <div className="message-meta">
-                  <span>{turn.role === "ai" ? "PrelimMD" : "Patient"}</span>
+                  <span>{turn.role === "ai" ? "Maya" : "You"}</span>
                   <span>{new Date(turn.timestamp).toLocaleString()}</span>
                 </div>
                 <p>{turn.content}</p>

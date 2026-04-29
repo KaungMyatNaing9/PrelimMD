@@ -4,66 +4,47 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type VoiceInputProps = {
   disabled?: boolean;
+  sessionId?: string;
   onTranscriptCaptured: (transcript: string) => void;
 };
 
 type VoiceStreamMessage =
-  | {
-      type: "partial";
-      transcript: string;
-      confidence?: number;
-    }
-  | {
-      type: "final";
-      transcript: string;
-      confidence?: number;
-      llm_response?: string;
-    }
-  | {
-      type: "error";
-      message: string;
-    };
+  | { type: "connected" }
+  | { type: "transcribing" }
+  | { type: "partial"; transcript: string; confidence?: number }
+  | { type: "final"; transcript: string; confidence?: number; llm_response?: string }
+  | { type: "error"; message: string };
 
-function buildVoiceSocketUrl() {
+function buildVoiceSocketUrl(sessionId?: string) {
   const explicitUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL?.trim();
+  let base: string;
 
   if (explicitUrl) {
-    return explicitUrl;
+    base = explicitUrl;
+  } else {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+    if (!apiUrl) {
+      base = "ws://localhost:8000/voice/stream";
+    } else {
+      const normalized = apiUrl
+        .replace(/^http:\/\//i, "ws://")
+        .replace(/^https:\/\//i, "wss://");
+      base = `${normalized.replace(/\/$/, "")}/voice/stream`;
+    }
   }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-
-  if (!apiUrl) {
-    return "ws://localhost:8000/voice/stream";
-  }
-
-  const normalizedApiUrl = apiUrl
-    .replace(/^http:\/\//i, "ws://")
-    .replace(/^https:\/\//i, "wss://");
-
-  return `${normalizedApiUrl.replace(/\/$/, "")}/voice/stream`;
+  return sessionId ? `${base}?session_id=${encodeURIComponent(sessionId)}` : base;
 }
 
 function getRecorderMimeType() {
-  if (typeof window === "undefined" || typeof MediaRecorder === "undefined") {
-    return undefined;
-  }
-
-  const preferredMimeTypes = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/mp4",
-  ];
-
-  return preferredMimeTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType));
+  if (typeof window === "undefined" || typeof MediaRecorder === "undefined") return undefined;
+  const preferred = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  return preferred.find((t) => MediaRecorder.isTypeSupported(t));
 }
 
-export default function VoiceInput({
-  disabled = false,
-  onTranscriptCaptured,
-}: VoiceInputProps) {
-  const socketUrl = useMemo(buildVoiceSocketUrl, []);
-  const meterBars = useMemo(() => Array.from({ length: 18 }, (_, index) => index), []);
+export default function VoiceInput({ disabled = false, sessionId, onTranscriptCaptured }: VoiceInputProps) {
+  const socketUrl = useMemo(() => buildVoiceSocketUrl(sessionId), [sessionId]);
+  const meterBars = useMemo(() => Array.from({ length: 18 }, (_, i) => i), []);
 
   const websocketRef = useRef<WebSocket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -73,70 +54,48 @@ export default function VoiceInput({
   const [isSupported, setIsSupported] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
   const [latestFinalTranscript, setLatestFinalTranscript] = useState("");
-  const [llmResponse, setLlmResponse] = useState("");
   const [statusMessage, setStatusMessage] = useState(
-    "Click the mic to stream audio to the backend live transcription service."
+    "Click the mic to start recording. Your speech will be transcribed when you stop."
   );
 
   useEffect(() => {
-    const browserSupportsRecording =
+    const supported =
       typeof window !== "undefined" &&
       typeof window.WebSocket !== "undefined" &&
       typeof window.MediaRecorder !== "undefined" &&
       typeof navigator !== "undefined" &&
       !!navigator.mediaDevices?.getUserMedia;
 
-    setIsSupported(browserSupportsRecording);
-
-    if (!browserSupportsRecording) {
-      setStatusMessage(
-        "This browser cannot stream microphone audio. Use Chrome or Edge for the backend voice demo."
-      );
+    setIsSupported(supported);
+    if (!supported) {
+      setStatusMessage("Voice not supported in this browser. Use Chrome or Edge.");
     }
-
-    return () => {
-      cleanupResources();
-    };
+    return () => cleanupResources();
   }, []);
 
   function stopRecorder() {
-    const currentRecorder = recorderRef.current;
-
-    if (currentRecorder && currentRecorder.state !== "inactive") {
-      currentRecorder.stop();
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop();
     }
-
     recorderRef.current = null;
   }
 
   function stopMediaStream() {
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
   }
 
   function cleanupResources() {
     stopRecorder();
     stopMediaStream();
-
-    if (websocketRef.current) {
-      const currentSocket = websocketRef.current;
-
-      if (
-        currentSocket.readyState === WebSocket.OPEN ||
-        currentSocket.readyState === WebSocket.CONNECTING
-      ) {
-        currentSocket.close();
-      }
+    const ws = websocketRef.current;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      ws.close();
     }
-
     websocketRef.current = null;
-  }
-
-  function resetLocalVoiceState() {
-    setIsRecording(false);
-    setIsConnecting(false);
   }
 
   function clearTranscript() {
@@ -144,155 +103,197 @@ export default function VoiceInput({
     finalTranscriptRef.current = "";
     setLiveTranscript("");
     setLatestFinalTranscript("");
-    setLlmResponse("");
-    resetLocalVoiceState();
+    setIsRecording(false);
+    setIsConnecting(false);
+    setIsTranscribing(false);
     setStatusMessage(
       isSupported
-        ? "Transcript cleared. Click the mic when you want to start streaming again."
-        : "This browser cannot stream microphone audio. Type into the response box instead."
+        ? "Cleared. Click the mic when you're ready."
+        : "Voice not supported — type your answer instead."
     );
   }
 
   function stopRecording() {
-    setStatusMessage("Stopping microphone stream...");
-
+    // Stop the microphone — but DON'T close the WebSocket yet.
+    // Send a {"type":"stop"} signal so the backend knows to transcribe.
     stopRecorder();
     stopMediaStream();
-
-    if (websocketRef.current?.readyState === WebSocket.OPEN) {
-      websocketRef.current.close();
-    }
-
     setIsRecording(false);
-    setIsConnecting(false);
+    setIsTranscribing(true);
+    setStatusMessage("Transcribing your speech…");
+
+    const ws = websocketRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "stop" }));
+      // WebSocket stays open — backend will send the final transcript back
+    } else {
+      setIsTranscribing(false);
+      setStatusMessage("Connection lost before transcription. Please try again.");
+    }
   }
 
   async function startRecording() {
-    if (disabled || !isSupported || isRecording || isConnecting) {
-      return;
-    }
+    if (disabled || !isSupported || isRecording || isConnecting || isTranscribing) return;
 
     setIsConnecting(true);
-    setStatusMessage("Preparing microphone stream...");
+    setStatusMessage("Connecting to voice service…");
     setLiveTranscript("");
     setLatestFinalTranscript("");
-    setLlmResponse("");
     finalTranscriptRef.current = "";
 
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = mediaStream;
 
-      const recorderMimeType = getRecorderMimeType();
-      const recorder = recorderMimeType
-        ? new MediaRecorder(mediaStream, { mimeType: recorderMimeType })
+      const mimeType = getRecorderMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(mediaStream, { mimeType })
         : new MediaRecorder(mediaStream);
-
       recorderRef.current = recorder;
 
-      const websocket = new WebSocket(socketUrl);
-      websocketRef.current = websocket;
+      const ws = new WebSocket(socketUrl);
+      websocketRef.current = ws;
 
-      websocket.onmessage = (event) => {
-        const message = JSON.parse(event.data) as VoiceStreamMessage;
-
-        if (message.type === "error") {
-          cleanupResources();
-          resetLocalVoiceState();
-          setStatusMessage(`Backend voice error: ${message.message}`);
+      ws.onmessage = (event) => {
+        let msg: VoiceStreamMessage;
+        try {
+          msg = JSON.parse(event.data as string) as VoiceStreamMessage;
+        } catch {
           return;
         }
 
-        if (message.type === "partial") {
-          setLiveTranscript(message.transcript);
-          setStatusMessage("Streaming audio to backend. Speak now...");
+        if (msg.type === "connected") {
+          setStatusMessage("Connected — speak clearly. Click Stop when done.");
           return;
         }
 
-        if (message.type === "final") {
-          finalTranscriptRef.current = message.transcript;
+        if (msg.type === "transcribing") {
+          setIsTranscribing(true);
+          setStatusMessage("Transcribing your speech…");
+          return;
+        }
+
+        if (msg.type === "partial") {
+          if (msg.transcript && msg.transcript !== "Listening…") {
+            setLiveTranscript(msg.transcript);
+          }
+          return;
+        }
+
+        if (msg.type === "error") {
+          setIsTranscribing(false);
+          setIsRecording(false);
+          setStatusMessage(`${msg.message}`);
+          // Close WebSocket on error
+          if (ws.readyState === WebSocket.OPEN) ws.close();
+          websocketRef.current = null;
+          return;
+        }
+
+        if (msg.type === "final") {
+          setIsTranscribing(false);
+          setIsConnecting(false);
+          finalTranscriptRef.current = msg.transcript;
           setLiveTranscript("");
-          setLatestFinalTranscript(message.transcript);
-          setLlmResponse(message.llm_response ?? "");
-          setStatusMessage("Final transcript received from backend.");
-          onTranscriptCaptured(message.transcript);
+          setLatestFinalTranscript(msg.transcript);
+          setStatusMessage("Got it — submitting your answer…");
+          onTranscriptCaptured(msg.transcript);
+          // Now safe to close
+          if (ws.readyState === WebSocket.OPEN) ws.close();
+          websocketRef.current = null;
         }
       };
 
-      websocket.onerror = () => {
+      ws.onerror = () => {
         cleanupResources();
-        setStatusMessage("Could not connect to the backend voice WebSocket.");
-        resetLocalVoiceState();
+        setIsTranscribing(false);
+        setIsRecording(false);
+        setIsConnecting(false);
+        setStatusMessage("Could not connect to voice service. Check that the backend is running.");
       };
 
-      websocket.onclose = () => {
+      ws.onclose = () => {
         stopRecorder();
         stopMediaStream();
-        resetLocalVoiceState();
+        setIsTranscribing(false);
+        setIsRecording(false);
+        setIsConnecting(false);
       };
 
+      // Wait for open
       await new Promise<void>((resolve, reject) => {
-        websocket.addEventListener("open", () => resolve(), { once: true });
-        websocket.addEventListener("error", () => reject(new Error("WebSocket failed")), {
-          once: true,
-        });
+        ws.addEventListener("open", () => resolve(), { once: true });
+        ws.addEventListener("error", () => reject(new Error("WebSocket failed to open")), { once: true });
       });
 
-      recorder.ondataavailable = async (event) => {
-        if (
-          event.data.size > 0 &&
-          websocketRef.current &&
-          websocketRef.current.readyState === WebSocket.OPEN
-        ) {
-          const buffer = await event.data.arrayBuffer();
-          websocketRef.current.send(buffer);
+      recorder.ondataavailable = async (e) => {
+        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+          const buf = await e.data.arrayBuffer();
+          ws.send(buf);
         }
       };
 
       recorder.start(250);
       setIsConnecting(false);
       setIsRecording(true);
-      setStatusMessage("Backend voice stream is live. Speak clearly into your microphone.");
-    } catch (error) {
+      setStatusMessage("Recording — speak clearly. Click Stop when you're done.");
+    } catch (err) {
       cleanupResources();
-      resetLocalVoiceState();
+      setIsRecording(false);
+      setIsConnecting(false);
+      setIsTranscribing(false);
       setStatusMessage(
-        error instanceof Error
-          ? `Voice stream could not start: ${error.message}`
-          : "Voice stream could not start."
+        err instanceof Error ? `Could not start mic: ${err.message}` : "Could not start microphone."
       );
     }
   }
 
   function toggleRecording() {
     if (!isSupported) {
-      setStatusMessage(
-        "This browser cannot stream microphone audio. Use Chrome or Edge for the backend voice demo."
-      );
+      setStatusMessage("Voice not supported — use Chrome or Edge.");
       return;
     }
-
+    if (isTranscribing) return; // Can't interrupt transcription
     if (isRecording || isConnecting) {
       stopRecording();
       return;
     }
-
     void startRecording();
   }
 
-  const voiceVisualState = isConnecting
+  const voiceVisualState = isTranscribing
     ? "connecting"
-    : isRecording
-      ? "recording"
-      : latestFinalTranscript
-        ? "captured"
-        : "idle";
+    : isConnecting
+      ? "connecting"
+      : isRecording
+        ? "recording"
+        : latestFinalTranscript
+          ? "captured"
+          : "idle";
+
+  const orbLabel = isTranscribing
+    ? "Wait"
+    : isConnecting
+      ? "Sync"
+      : isRecording
+        ? "Stop"
+        : "Mic";
+
+  const orbSubLabel = isTranscribing
+    ? "Processing…"
+    : isConnecting
+      ? "Connecting"
+      : isRecording
+        ? "Recording"
+        : "Start";
 
   const transcriptHeadline = liveTranscript
     ? "Listening live"
     : latestFinalTranscript
-      ? "Utterance captured"
-      : "Awaiting microphone input";
+      ? "Transcript captured"
+      : isTranscribing
+        ? "Transcribing…"
+        : "Awaiting microphone input";
 
   const transcriptPreview = liveTranscript || latestFinalTranscript;
 
@@ -300,17 +301,14 @@ export default function VoiceInput({
     <section className="panel voice-panel">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Voice capture</p>
-          <h2>Mic and transcript preview</h2>
+          <p className="eyebrow">Voice input</p>
+          <h2>Speak your answer</h2>
         </div>
-        <span
-          className={`status-badge ${
-            isRecording || isConnecting ? "status-live" : "status-idle"
-          }`}
-        >
-          {isConnecting ? "Connecting" : isRecording ? "Streaming" : isSupported ? "Ready" : "Unavailable"}
+        <span className={`status-badge ${isRecording || isConnecting || isTranscribing ? "status-live" : "status-idle"}`}>
+          {isTranscribing ? "Transcribing" : isConnecting ? "Connecting" : isRecording ? "Recording" : isSupported ? "Ready" : "Unavailable"}
         </span>
       </div>
+
       <div className={`voice-stage voice-stage-simplified voice-stage-${voiceVisualState}`}>
         <div className={`voice-visual voice-visual-${voiceVisualState}`}>
           <div className="voice-beam voice-beam-left" />
@@ -330,74 +328,75 @@ export default function VoiceInput({
           <button
             type="button"
             className={`voice-orb ${isRecording ? "voice-orb-active" : ""}`}
-            disabled={disabled}
+            disabled={disabled || isTranscribing}
             onClick={toggleRecording}
           >
             <span className="voice-orb-glow" aria-hidden="true" />
             <span className="voice-orb-core">
-              <span className="voice-orb-label">Mic</span>
-              <strong>{isConnecting ? "Sync" : isRecording ? "Live" : "Start"}</strong>
+              <span className="voice-orb-label">{orbLabel}</span>
+              <strong>{orbSubLabel}</strong>
             </span>
           </button>
           <div className="voice-wave-shell" aria-hidden="true">
             <div className="voice-wave voice-wave-left">
-              {meterBars.slice(0, 8).map((bar) => (
-                <span
-                  key={`left-${bar}`}
-                  className="voice-wave-bar"
-                  style={{ animationDelay: `${bar * 70}ms` }}
-                />
+              {meterBars.slice(0, 8).map((b) => (
+                <span key={`l-${b}`} className="voice-wave-bar" style={{ animationDelay: `${b * 70}ms` }} />
               ))}
             </div>
             <div className="voice-wave voice-wave-right">
-              {meterBars.slice(0, 8).map((bar) => (
-                <span
-                  key={`right-${bar}`}
-                  className="voice-wave-bar"
-                  style={{ animationDelay: `${bar * 70 + 120}ms` }}
-                />
+              {meterBars.slice(0, 8).map((b) => (
+                <span key={`r-${b}`} className="voice-wave-bar" style={{ animationDelay: `${b * 70 + 120}ms` }} />
               ))}
             </div>
           </div>
           <div className="voice-eq voice-eq-bottom" aria-hidden="true">
-            {meterBars.slice(0, 12).map((bar) => (
-              <span
-                key={`bottom-${bar}`}
-                className="voice-eq-bar"
-                style={{ animationDelay: `${bar * 80}ms` }}
-              />
+            {meterBars.slice(0, 12).map((b) => (
+              <span key={`eq-${b}`} className="voice-eq-bar" style={{ animationDelay: `${b * 80}ms` }} />
             ))}
           </div>
         </div>
+
         <div className="voice-copy">
           <p className="voice-kicker">{transcriptHeadline}</p>
           <h3 className="voice-headline">
-            {isRecording ? "The room is listening." : isConnecting ? "Linking to the live stream." : "Tap the orb to speak."}
+            {isTranscribing
+              ? "Transcribing your words…"
+              : isRecording
+                ? "The room is listening."
+                : isConnecting
+                  ? "Connecting to voice service."
+                  : "Tap the mic to speak."}
           </h3>
           <p className="voice-status-line">{statusMessage}</p>
           <div className="voice-live-chip">
             <span className="voice-live-dot" />
-            <span>{transcriptPreview || "Speak to see the transcript wake up here."}</span>
+            <span>{transcriptPreview || "Your speech will appear here."}</span>
           </div>
-          {llmResponse ? <p className="voice-ghost-note">{llmResponse}</p> : null}
         </div>
       </div>
+
       <div className="voice-readout-grid voice-readout-grid-simplified">
         <div className="transcript-preview transcript-preview-live transcript-preview-hero">
-          <p className="label">{liveTranscript ? "Live transcript" : "Latest captured response"}</p>
+          <p className="label">{liveTranscript ? "Live transcript" : "Captured response"}</p>
           <p>
-            {transcriptPreview || "Your spoken response will appear here once the microphone stream starts."}
+            {transcriptPreview || "Speak into the mic — your words appear here, then auto-submit to Maya."}
           </p>
         </div>
       </div>
+
       <div className="button-row">
-        {isRecording || isConnecting ? (
+        {isRecording ? (
           <button type="button" className="button" onClick={stopRecording}>
             Stop recording
           </button>
         ) : null}
-        <button type="button" className="button secondary" onClick={clearTranscript}>
-          Clear transcript
+        {isTranscribing ? (
+          <span className="status-badge status-live" style={{ padding: "8px 12px" }}>
+            Transcribing…
+          </span>
+        ) : null}
+        <button type="button" className="button secondary" onClick={clearTranscript} disabled={isTranscribing}>
+          Clear
         </button>
       </div>
     </section>

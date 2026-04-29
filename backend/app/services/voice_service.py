@@ -1,114 +1,166 @@
-# app/services/voice_service.py
-# Voice processing — speech-to-text via Deepgram.
-# Owner: Voice teammate
-#
-# TODO: Voice - implement synthesize() when TTS is needed
-
 import asyncio
+import json
+from io import BytesIO
 
-from deepgram import AsyncDeepgramClient, DeepgramClient
-from deepgram.listen.v1.types.listen_v1results import ListenV1Results
+from elevenlabs.client import AsyncElevenLabs, ElevenLabs
 from fastapi import WebSocket
 
 from app.config import settings
 from app.models.schemas import TranscribeResponse
 
+_MIN_TRANSCRIBE_BYTES = 4_000
 
-# ── Pre-recorded (file upload) ────────────────────────────────────────────────
+
+def _sync_client() -> ElevenLabs:
+    return ElevenLabs(api_key=settings.elevenlabs_api_key)
+
+
+def _async_client() -> AsyncElevenLabs:
+    return AsyncElevenLabs(api_key=settings.elevenlabs_api_key)
+
+
+# ── Pre-recorded file upload ──────────────────────────────────────────────────
 
 def transcribe(audio_bytes: bytes) -> TranscribeResponse:
-    """
-    Send raw audio bytes to Deepgram and return a structured transcript.
-    Field paths verified against deepgram-sdk v6.1.1 source.
-    """
-    client = DeepgramClient(api_key=settings.deepgram_api_key)
-
-    response = client.listen.v1.media.transcribe_file(
-        request=audio_bytes,
-        model="nova-3",
-        smart_format=True,
-        detect_language=True,
-    )
-
-    alt = response.results.channels[0].alternatives[0]
-    channel = response.results.channels[0]
-
+    client = _sync_client()
+    audio_io = BytesIO(audio_bytes)
+    audio_io.name = "audio.webm"
+    result = client.speech_to_text.convert(file=audio_io, model_id="scribe_v1")
     return TranscribeResponse(
         success=True,
-        transcript=alt.transcript or "",
-        confidence=alt.confidence,
-        language=channel.detected_language,
-        duration=response.metadata.duration,
-        raw=response.model_dump(),
+        transcript=result.text or "",
+        confidence=None,
+        language=getattr(result, "language_code", None),
+        duration=None,
+        raw={},
     )
 
 
 # ── Live streaming ────────────────────────────────────────────────────────────
 
-async def stream_session(browser_ws: WebSocket) -> None:
+async def stream_session(browser_ws: WebSocket, session_id: str | None = None) -> None:
     """
-    Bridge a browser WebSocket to Deepgram's live streaming API.
+    Collect mic audio from the browser, transcribe with ElevenLabs Scribe,
+    and return the result.
 
-    Audio format expected from browser: linear16 PCM, 16000 Hz mono.
-    Sends JSON events back to the browser:
-      - type "partial"  → interim result while person is still speaking
-      - type "final"    → speech_final fired (pause detected), transcript sent to LLM
+    Protocol (browser → backend):
+      - Binary frames: raw audio chunks from MediaRecorder
+      - Text frame {"type": "stop"}: patient finished speaking — trigger transcription
+
+    Protocol (backend → browser):
+      {"type": "connected"}              — WebSocket is live and ready
+      {"type": "partial", "transcript": "Listening…"}  — audio is being received
+      {"type": "transcribing"}           — stop received, transcribing now
+      {"type": "final", "transcript": "...", "llm_response": "..."}  — done
+      {"type": "error", "message": "..."}  — something failed
     """
-    client = AsyncDeepgramClient(api_key=settings.deepgram_api_key)
+    audio_buffer = bytearray()
 
-    async with client.listen.v1.connect(
-        model="nova-3",
-        endpointing=300,           # fire speech_final after 300 ms of silence
-        smart_format="true",       # SDK bug: booleans must be strings for WS params
-        interim_results="true",    # send partials so browser can show live text
-    ) as dg_socket:
+    # Let the frontend know the connection is live
+    await browser_ws.send_json({"type": "connected"})
 
-        async def forward_audio() -> None:
-            """Read audio chunks from browser and forward to Deepgram."""
-            async for chunk in browser_ws.iter_bytes():
-                await dg_socket.send_media(chunk)
+    # ── Collect audio until the patient signals they're done ──────────────────
+    heartbeat_counter = 0
+    while True:
+        try:
+            raw = await browser_ws.receive()
+        except Exception:
+            # WebSocket disconnected without sending stop — still try to transcribe
+            break
 
-        async def handle_transcripts() -> None:
-            """Read Deepgram events and send structured JSON to browser."""
-            async for event in dg_socket:
-                if not isinstance(event, ListenV1Results):
-                    continue
+        msg_type = raw.get("type")
 
-                transcript = event.channel.alternatives[0].transcript
-                if not transcript:
-                    continue
+        if msg_type == "websocket.disconnect":
+            break
 
-                confidence = event.channel.alternatives[0].confidence
+        if msg_type == "websocket.receive":
+            audio_chunk = raw.get("bytes")
+            text_frame = raw.get("text")
 
-                if event.speech_final:
-                    # Pause detected — this is one complete utterance
-                    llm_response = await _call_llm(transcript)
-                    await browser_ws.send_json({
-                        "type": "final",
-                        "transcript": transcript,
-                        "confidence": confidence,
-                        "llm_response": llm_response,
-                    })
-                elif event.is_final:
-                    # Deepgram committed this chunk but speech isn't done yet
-                    await browser_ws.send_json({
-                        "type": "partial",
-                        "transcript": transcript,
-                        "confidence": confidence,
-                    })
+            if audio_chunk:
+                audio_buffer.extend(audio_chunk)
+                # Send a heartbeat every ~40 chunks so the frontend knows we're alive
+                heartbeat_counter += 1
+                if heartbeat_counter % 40 == 0:
+                    try:
+                        await browser_ws.send_json({"type": "partial", "transcript": "Listening…"})
+                    except Exception:
+                        break
 
-        await asyncio.gather(forward_audio(), handle_transcripts())
+            elif text_frame:
+                try:
+                    msg = json.loads(text_frame)
+                    if msg.get("type") == "stop":
+                        # Patient stopped speaking — acknowledge and break to transcribe
+                        await browser_ws.send_json({"type": "transcribing"})
+                        break
+                except (json.JSONDecodeError, Exception):
+                    pass
+
+    # ── Transcribe everything we collected ────────────────────────────────────
+    if len(audio_buffer) < _MIN_TRANSCRIBE_BYTES:
+        try:
+            await browser_ws.send_json({"type": "error", "message": "Audio too short — please speak for a moment."})
+        except Exception:
+            pass
+        return
+
+    try:
+        client = _async_client()
+        audio_io = BytesIO(bytes(audio_buffer))
+        audio_io.name = "audio.webm"
+        result = await client.speech_to_text.convert(file=audio_io, model_id="scribe_v1")
+        final_text = (result.text or "").strip()
+    except Exception as exc:
+        try:
+            await browser_ws.send_json({"type": "error", "message": f"Transcription failed: {exc}"})
+        except Exception:
+            pass
+        return
+
+    if not final_text:
+        try:
+            await browser_ws.send_json({"type": "error", "message": "Could not make out what was said. Please try again."})
+        except Exception:
+            pass
+        return
+
+    llm_response = await _call_llm(final_text, session_id)
+
+    try:
+        await browser_ws.send_json({
+            "type": "final",
+            "transcript": final_text,
+            "llm_response": llm_response,
+        })
+    except Exception:
+        pass
 
 
-async def _call_llm(transcript: str) -> str:
-    """
-    Send a final transcript to the LLM interview engine.
-    TODO: AI teammate — replace this placeholder with real LLM call.
-    """
-    return f"[LLM placeholder] Received utterance: {transcript}"
+# ── Text-to-speech ────────────────────────────────────────────────────────────
+
+async def synthesize(text: str, voice_id: str | None = None) -> bytes:
+    client = _async_client()
+    vid = voice_id or settings.elevenlabs_voice_id
+    chunks: list[bytes] = []
+    async for chunk in client.text_to_speech.convert(
+        voice_id=vid,
+        text=text,
+        model_id="eleven_turbo_v2_5",
+        output_format="mp3_44100_128",
+    ):
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
-def synthesize(text: str) -> bytes:
-    """Convert text to speech audio bytes."""
-    # TODO: Voice - implement with chosen TTS provider
-    raise NotImplementedError
+# ── LLM bridge ────────────────────────────────────────────────────────────────
+
+async def _call_llm(transcript: str, session_id: str | None = None) -> str:
+    if not session_id:
+        return ""
+    try:
+        from app.services.ai_engine import process_response
+        result = await process_response(session_id, transcript)
+        return result.get("message", "")
+    except Exception:
+        return ""

@@ -1,29 +1,46 @@
-# app/routes/interview.py
-# HTTP routes for the AI interview session.
-# Owner: AI teammate
-#
-# TODO: AI - POST /start   → create a new session, return first question
-# TODO: AI - POST /respond → accept patient answer, return next question or triage result
-# TODO: AI - GET  /{session_id}/summary → return structured triage summary
+import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
+from app.services import ai_engine
 
 router = APIRouter()
 
 
+class StartRequest(BaseModel):
+    session_id: str | None = None
+
+
+class RespondRequest(BaseModel):
+    session_id: str
+    answer: str
+
+
 @router.post("/start")
-def start_interview():
-    # TODO: AI - call ai_engine.start_session() and return opening question
-    return {"message": "placeholder — interview start not yet implemented"}
+async def start_interview(body: StartRequest = StartRequest()):
+    session_id = body.session_id or str(uuid.uuid4())
+    try:
+        return await ai_engine.start_session(session_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.post("/respond")
-def respond_to_interview():
-    # TODO: AI - call ai_engine.process_response() with patient input
-    return {"message": "placeholder — interview respond not yet implemented"}
+async def respond_to_interview(body: RespondRequest):
+    try:
+        return await ai_engine.process_response(body.session_id, body.answer)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/{session_id}/summary")
-def get_interview_summary(session_id: str):
-    # TODO: AI - retrieve and return structured session summary
-    return {"session_id": session_id, "message": "placeholder — summary not yet implemented"}
+async def get_interview_summary(session_id: str):
+    try:
+        return await ai_engine.get_summary(session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))

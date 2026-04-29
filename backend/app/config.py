@@ -5,8 +5,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    deepgram_api_key: str = ""
-    # Maximum audio upload size in megabytes
+    anthropic_api_key: str = ""
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = "9BWtsMINqrJLrRacOk9x"  # Aria — warm, expressive
     max_file_size_mb: int = 25
 
     model_config = {"env_file": ".env", "extra": "ignore"}

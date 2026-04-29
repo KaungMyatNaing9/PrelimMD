@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState, useTransition } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
   completeInterview,
   getInterviewSession,
@@ -9,6 +9,7 @@ import {
   resetInterview,
   sendInterviewAnswer,
   startInterview,
+  synthesizeSpeech,
   type InterviewSessionState,
   type TranscriptSource,
 } from "@/lib/api";
@@ -29,15 +30,71 @@ export default function InterviewChat() {
   const [isWorking, setIsWorking] = useState(false);
   const [isPending, startTransition] = useTransition();
 
+  // Maya voice state
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [mayaSpeaking, setMayaSpeaking] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+
   useEffect(() => {
     setSession(getInterviewSession());
   }, []);
+
+  const stopCurrentAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+    setMayaSpeaking(false);
+  }, []);
+
+  const speakMayaMessage = useCallback(
+    async (text: string) => {
+      if (!voiceEnabled || !text.trim()) return;
+      stopCurrentAudio();
+
+      try {
+        setMayaSpeaking(true);
+        const blob = await synthesizeSpeech(text);
+        const url = URL.createObjectURL(blob);
+        audioUrlRef.current = url;
+
+        const audio = new Audio(url);
+        audioRef.current = audio;
+
+        audio.onended = () => {
+          setMayaSpeaking(false);
+          URL.revokeObjectURL(url);
+          audioUrlRef.current = null;
+          audioRef.current = null;
+        };
+        audio.onerror = () => {
+          setMayaSpeaking(false);
+        };
+
+        await audio.play();
+      } catch {
+        setMayaSpeaking(false);
+      }
+    },
+    [voiceEnabled, stopCurrentAudio]
+  );
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => stopCurrentAudio();
+  }, [stopCurrentAudio]);
 
   async function handleSessionAction(
     action: () => Promise<InterviewSessionState>,
     nextDraft = "",
     nextSource: TranscriptSource = "typed"
   ) {
+    stopCurrentAudio();
     setIsWorking(true);
     setErrorMessage(null);
 
@@ -48,6 +105,15 @@ export default function InterviewChat() {
         setDraft(nextDraft);
         setSubmissionSource(nextSource);
       });
+
+      // Speak Maya's latest message after state updates
+      if (nextSession.currentQuestion) {
+        void speakMayaMessage(nextSession.currentQuestion);
+      } else if (nextSession.status === "completed") {
+        // Speak the last AI turn (the closing message)
+        const lastAiTurn = [...nextSession.transcript].reverse().find((t) => t.role === "ai");
+        if (lastAiTurn) void speakMayaMessage(lastAiTurn.content);
+      }
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Something went wrong while updating the session."
@@ -63,14 +129,9 @@ export default function InterviewChat() {
 
   async function submitAnswer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!session || !draft.trim()) {
-      return;
-    }
-
+    if (!session || !draft.trim()) return;
     const answerToSend = draft.trim();
     const source = submissionSource;
-
     await handleSessionAction(
       () => sendInterviewAnswer(session.sessionId, answerToSend, source),
       "",
@@ -79,17 +140,14 @@ export default function InterviewChat() {
   }
 
   async function endSessionNow() {
-    if (!session) {
-      return;
-    }
-
+    if (!session) return;
     await handleSessionAction(() => completeInterview(session.sessionId));
   }
 
   async function resetDemo() {
+    stopCurrentAudio();
     setIsWorking(true);
     setErrorMessage(null);
-
     try {
       await resetInterview();
       startTransition(() => {
@@ -99,7 +157,7 @@ export default function InterviewChat() {
       });
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "Unable to reset the current demo session."
+        error instanceof Error ? error.message : "Unable to reset the current session."
       );
     } finally {
       setIsWorking(false);
@@ -111,15 +169,15 @@ export default function InterviewChat() {
   if (!session) {
     return (
       <section className="panel empty-state">
-        <span className="eyebrow">Session start</span>
-        <h2>Begin the guided intake demo</h2>
+        <span className="eyebrow">Pre-visit intake</span>
+        <h2>Ready when you are</h2>
         <p className="supporting-text">
-          The interview flow below is wired for mock data first, which lets you demo the full
-          frontend before the backend contract is finalized.
+          Maya, your pre-visit nurse, will walk you through a brief intake conversation — about
+          5 minutes — so your doctor has everything they need before your appointment.
         </p>
         <div className="button-row">
           <button type="button" className="button" onClick={beginSession} disabled={busy}>
-            Start intake session
+            Start intake
           </button>
           <Link href="/report" className="button ghost">
             View sample report
@@ -135,8 +193,8 @@ export default function InterviewChat() {
         <div className="panel chat-panel">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Interview workspace</p>
-              <h2>Live patient intake</h2>
+              <p className="eyebrow">Pre-visit intake</p>
+              <h2>Maya — Your Intake Nurse</h2>
             </div>
             <div className="badge-row">
               <span
@@ -146,14 +204,27 @@ export default function InterviewChat() {
               >
                 {session.status === "completed" ? "Complete" : "In progress"}
               </span>
-              <span className="status-badge status-idle">
-                {isMockApiEnabled ? "Mock API" : "Live API"}
-              </span>
+              {mayaSpeaking ? (
+                <span className="status-badge status-live">Maya speaking…</span>
+              ) : (
+                <button
+                  type="button"
+                  className="status-badge status-idle"
+                  style={{ cursor: "pointer", border: "none", background: "none" }}
+                  onClick={() => {
+                    stopCurrentAudio();
+                    setVoiceEnabled((v) => !v);
+                  }}
+                  title={voiceEnabled ? "Mute Maya's voice" : "Unmute Maya's voice"}
+                >
+                  {voiceEnabled ? "🔊 Voice on" : "🔇 Voice off"}
+                </button>
+              )}
             </div>
           </div>
           <div className="progress-card">
             <div className="progress-header">
-              <span>Session progress</span>
+              <span>Intake progress</span>
               <strong>{Math.round(session.progress)}%</strong>
             </div>
             <div className="progress-track" aria-hidden="true">
@@ -169,21 +240,32 @@ export default function InterviewChat() {
               >
                 <div className="message-bubble">
                   <div className="message-meta">
-                    <span>{turn.role === "ai" ? "PrelimMD" : "Patient"}</span>
+                    <span>{turn.role === "ai" ? "Maya" : "You"}</span>
                     <span>{formatClock(turn.timestamp)}</span>
                   </div>
                   <p>{turn.content}</p>
                 </div>
               </article>
             ))}
+            {mayaSpeaking && (
+              <article className="message-row message-ai">
+                <div className="message-bubble">
+                  <div className="message-meta">
+                    <span>Maya</span>
+                    <span>now</span>
+                  </div>
+                  <p style={{ opacity: 0.6, fontStyle: "italic" }}>Speaking…</p>
+                </div>
+              </article>
+            )}
           </div>
           {session.status === "completed" ? (
             <div className="completion-card">
-              <p className="eyebrow">Session complete</p>
-              <h3>Ready for report review and booking</h3>
+              <p className="eyebrow">Intake complete</p>
+              <h3>Your doctor is all set</h3>
               <p className="supporting-text">
-                The interview summary is saved locally so you can move into the next frontend
-                screens immediately.
+                Maya has prepared a summary for your physician. You can review it or jump straight
+                to booking your appointment.
               </p>
               <div className="button-row">
                 <Link href="/report" className="button">
@@ -200,22 +282,23 @@ export default function InterviewChat() {
           ) : (
             <form className="composer" onSubmit={submitAnswer}>
               <label className="label" htmlFor="patient-answer">
-                Current patient response
+                Your response
               </label>
               <textarea
                 id="patient-answer"
                 className="text-field"
                 value={draft}
                 rows={4}
-                placeholder={session.currentQuestion ?? "Type the patient's answer here"}
+                placeholder={session.currentQuestion ?? "Type your response here…"}
                 onChange={(event) => {
+                  stopCurrentAudio();
                   setDraft(event.target.value);
                   setSubmissionSource("typed");
                 }}
               />
               <div className="button-row">
-                <button type="submit" className="button" disabled={busy || !draft.trim()}>
-                  Send answer
+                <button type="submit" className="button" disabled={busy || !draft.trim() || mayaSpeaking}>
+                  Send
                 </button>
                 <button
                   type="button"
@@ -223,10 +306,10 @@ export default function InterviewChat() {
                   onClick={endSessionNow}
                   disabled={busy}
                 >
-                  End and review report
+                  Finish interview
                 </button>
                 <button type="button" className="button ghost" onClick={resetDemo} disabled={busy}>
-                  Reset session
+                  Reset
                 </button>
               </div>
             </form>
@@ -236,10 +319,21 @@ export default function InterviewChat() {
 
         <div className="side-column">
           <VoiceInput
-            disabled={busy || session.status === "completed"}
+            sessionId={session.sessionId}
+            disabled={busy || session.status === "completed" || mayaSpeaking}
             onTranscriptCaptured={(transcript) => {
-              setDraft(transcript);
-              setSubmissionSource("voice");
+              stopCurrentAudio();
+              if (!transcript.trim() || session.status === "completed" || busy) {
+                setDraft(transcript);
+                setSubmissionSource("voice");
+                return;
+              }
+              // Auto-submit the voice answer directly — no need to press Send
+              void handleSessionAction(
+                () => sendInterviewAnswer(session.sessionId, transcript.trim(), "voice"),
+                "",
+                "typed"
+              );
             }}
           />
           <section className="panel detail-panel">
@@ -260,22 +354,22 @@ export default function InterviewChat() {
               </div>
             ) : (
               <p className="supporting-text">
-                Structured fields will populate as the patient answers the guided questions.
+                Structured fields will appear here as Maya gathers your information.
               </p>
             )}
           </section>
           <section className="panel detail-panel">
             <div className="section-heading">
               <div>
-                <p className="eyebrow">Frontend note</p>
-                <h2>What this screen proves</h2>
+                <p className="eyebrow">How it works</p>
+                <h2>Your intake, your way</h2>
               </div>
             </div>
             <ul className="clean-list">
-              <li>Start and end flow works.</li>
-              <li>Transcript UI updates in real time.</li>
-              <li>Backend WebSocket transcription hands text into the chat composer.</li>
-              <li>Report and booking screens can consume structured session data next.</li>
+              <li>Type your answers or use the mic — your choice.</li>
+              <li>Maya asks one question at a time and adapts to what you share.</li>
+              <li>Your doctor receives a clear summary before you arrive.</li>
+              <li>Nothing is shared without your knowledge.</li>
             </ul>
           </section>
         </div>
