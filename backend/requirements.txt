@@ -1,7 +1,6 @@
 # requirements.txt
 # Core backend dependencies — add feature-specific libraries in their own PR.
 #
-# TODO: AI     - add openai / anthropic SDK when implementing ai_engine.py
 # TODO: Report - add reportlab or weasyprint for PDF generation
 
 fastapi>=0.111.0
@@ -10,6 +9,11 @@ pydantic>=2.7.0
 pydantic-settings>=2.2.0
 python-dotenv>=1.0.0
 python-multipart>=0.0.9   # required by FastAPI for UploadFile / form data
+
+# ── AI / Agent brain ──────────────────────────────────────────────────────────
+openai>=1.30.0
+pymupdf>=1.24.0        # PDF text extraction
+pymupdf4llm>=0.0.17    # converts PDF to clean markdown for LLM input
 
 # ── Voice ─────────────────────────────────────────────────────────────────────
 deepgram-sdk>=6.1.1
