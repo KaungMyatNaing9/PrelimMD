@@ -2,31 +2,54 @@
 # Form upload, parsing, prefill, and submission routes.
 # Owner: AI (Person 2)
 
+import base64
 import pymupdf4llm
 import pymupdf
 from fastapi import APIRouter, HTTPException, UploadFile
+from openai import OpenAI
 
+from app.config import settings
 from app.models.schemas import CallResponses, CompletedForm, FormSchema, PrefilledForm
 from app.services import ai_engine
 
 router = APIRouter()
 
 
-def _extract_text(file_bytes: bytes, filename: str) -> str:
-    """Extract plain text from a PDF using pymupdf4llm, or decode as plain text.
+def _ocr_pdf(doc: pymupdf.Document) -> str:
+    """OCR fallback: render pages to PNG and send to gpt-4o vision. No extra deps."""
+    content: list = [{"type": "text", "text": (
+        "These are pages from a scanned medical intake form. "
+        "Extract ALL text exactly as it appears — preserve labels, field names, "
+        "checkboxes, and any pre-filled values. Output plain text only."
+    )}]
+    for page in doc:
+        pix = page.get_pixmap(dpi=150)
+        img_b64 = base64.b64encode(pix.tobytes("png")).decode()
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{img_b64}", "detail": "high"},
+        })
+    client = OpenAI(api_key=settings.openai_api_key)
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": content}],
+        temperature=0,
+    )
+    return response.choices[0].message.content.strip()
 
-    Raises ValueError for image-only (scanned) PDFs that contain no embedded text,
-    since we have no OCR backend — better to fail loudly than return garbage.
+
+def _extract_text(file_bytes: bytes, filename: str) -> str:
+    """
+    Extract text from a PDF or plain-text file.
+    Digital PDFs: pymupdf4llm (fast, structure-preserving).
+    Scanned/image PDFs: automatic fallback to gpt-4o vision OCR.
     """
     if filename.lower().endswith(".pdf"):
         doc = pymupdf.Document(stream=file_bytes, filetype="pdf")
         text = pymupdf4llm.to_markdown(doc)
-        if not text.strip():
-            raise ValueError(
-                "PDF appears to be a scanned image with no embedded text. "
-                "Please upload a text-based PDF or a plain-text (.txt) form."
-            )
-        return text
+        if text.strip():
+            return text
+        return _ocr_pdf(doc)
     return file_bytes.decode("utf-8", errors="ignore")
 
 
