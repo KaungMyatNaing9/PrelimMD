@@ -1,7 +1,4 @@
-# requirements.txt
-# Core backend dependencies — add feature-specific libraries in their own PR.
-#
-# TODO: Report - add reportlab or weasyprint for PDF generation
+# Core backend dependencies
 
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
@@ -12,9 +9,19 @@ python-multipart>=0.0.9   # required by FastAPI for UploadFile / form data
 
 # ── AI / Agent brain ──────────────────────────────────────────────────────────
 openai>=1.30.0
-pymupdf>=1.24.0        # PDF text extraction
-pymupdf4llm>=0.0.17    # converts PDF to clean markdown for LLM input
+pymupdf>=1.24.0            # PDF text extraction
+pymupdf4llm>=0.0.17        # converts PDF to clean markdown for LLM input
 
-# ── Voice ─────────────────────────────────────────────────────────────────────
+# ── Voice / STT ───────────────────────────────────────────────────────────────
 deepgram-sdk>=6.1.1
-websockets<14          # deepgram-sdk uses websockets.legacy which was removed in v14+
+websockets<14              # deepgram-sdk requires websockets.legacy (removed in v14+)
+
+# ── Voice / TTS (ElevenLabs) ──────────────────────────────────────────────────
+elevenlabs>=1.0.0          # TTS synthesis; gracefully skipped if API key missing
+
+# ── HTTP (for ElevenLabs REST calls if SDK is unavailable) ───────────────────
+httpx>=0.27.0
+requests>=2.31.0
+
+# ── Local developer tooling ───────────────────────────────────────────────────
+streamlit>=1.35.0

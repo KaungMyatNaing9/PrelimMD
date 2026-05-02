@@ -1,29 +1,53 @@
 # app/routes/scheduling.py
-# HTTP routes for appointment scheduling.
-# Owner: Report/Scheduling teammate
+# NOTE: This module has been repurposed.
 #
-# TODO: Scheduling - GET  /slots        → return available provider appointment slots
-# TODO: Scheduling - POST /book         → book a slot, return confirmation
-# TODO: Scheduling - DELETE /book/{id}  → cancel a booking
+# The original appointment scheduling stubs (GET /slots, POST /book, DELETE /book/{id})
+# have been replaced by the post-discharge follow-up scheduler, which lives at:
+#   GET  /followups
+#   GET  /followups/{task_id}
+#   POST /followups/schedule
+#   GET  /followups/question-bank
+#
+# This file is kept as a thin compatibility shim that redirects to the follow-up
+# router for any legacy call patterns. If Twilio or a real calendar integration
+# is added later, real scheduling logic can go here.
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
 
 @router.get("/slots")
-def get_available_slots():
-    # TODO: Scheduling - call scheduler.get_slots() with provider/date filters
-    return {"message": "placeholder — slot retrieval not yet implemented"}
+def get_slots():
+    return JSONResponse(
+        status_code=410,
+        content={
+            "message": "This endpoint has been replaced. Use GET /followups for follow-up task management.",
+            "new_endpoints": {
+                "list_followups": "GET /followups",
+                "schedule_followup": "POST /followups/schedule",
+                "question_bank": "GET /followups/question-bank",
+            },
+        },
+    )
 
 
 @router.post("/book")
 def book_appointment():
-    # TODO: Scheduling - call scheduler.book() with patient and slot details
-    return {"message": "placeholder — booking not yet implemented"}
+    return JSONResponse(
+        status_code=410,
+        content={
+            "message": "This endpoint has been replaced. Use POST /followups/schedule to schedule follow-up calls.",
+        },
+    )
 
 
 @router.delete("/book/{booking_id}")
 def cancel_appointment(booking_id: str):
-    # TODO: Scheduling - call scheduler.cancel() with booking_id
-    return {"booking_id": booking_id, "message": "placeholder — cancellation not yet implemented"}
+    return JSONResponse(
+        status_code=410,
+        content={
+            "message": "This endpoint has been replaced.",
+        },
+    )
