@@ -7,7 +7,7 @@
 # TODO: Backend - add structured logging middleware
 
 from fastapi import FastAPI
-from app.routes import interview, voice, report, scheduling
+from app.routes import calls, forms, interview, voice, report, scheduling
 
 app = FastAPI(
     title="PrelimMD API",
@@ -16,8 +16,10 @@ app = FastAPI(
 )
 
 # ── Routers ──────────────────────────────────────────────────────────────────
-app.include_router(interview.router, prefix="/interview", tags=["Interview"])
+app.include_router(forms.router,     prefix="/forms",     tags=["Forms"])
+app.include_router(calls.router,     prefix="/calls",     tags=["Calls"])
 app.include_router(voice.router,     prefix="/voice",     tags=["Voice"])
+app.include_router(interview.router, prefix="/interview", tags=["Interview"])
 app.include_router(report.router,    prefix="/report",    tags=["Report"])
 app.include_router(scheduling.router,prefix="/scheduling",tags=["Scheduling"])
 
