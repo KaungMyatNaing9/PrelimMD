@@ -11,22 +11,99 @@
 #   4. Patient signs consent:        POST /patient/checkin/{visit_id}/sign
 
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile
 
 from app.models.schemas import (
+    AssignedForm,
     CheckInField,
     CheckInFormGroup,
     CheckInFormsResponse,
+    CheckInScanResponse,
+    CheckInScannedField,
     CheckInSignRequest,
     CheckInSignResponse,
     CheckInSubmitRequest,
     CheckInSubmitResponse,
+    FormSchema,
+    NewPatientCheckInRequest,
+    NewPatientCheckInResponse,
     PatientValidateRequest,
     PatientValidateResponse,
+    Patient,
+    ScheduledVisit,
 )
 from app.services import ai_engine, store
 
 router = APIRouter()
+SCAN_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+
+
+@router.post("/new-checkin", response_model=NewPatientCheckInResponse)
+def create_new_patient_checkin(body: NewPatientCheckInRequest):
+    """
+    Create a lightweight patient shell plus today's visit for first-time patients.
+    A default intake form is attached immediately so the kiosk can continue into review.
+    """
+    template = store.get_template(body.template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail=f"Template {body.template_id} not found.")
+
+    patient = Patient(
+        patient_id=store.new_id("patient-"),
+        first_name=body.first_name.strip(),
+        last_name=body.last_name.strip(),
+        date_of_birth=body.date_of_birth,
+        gender=body.gender,
+        phone=body.phone.strip(),
+        email=body.email.strip() if body.email else None,
+        address=body.address.strip() if body.address else None,
+        insurance_provider=body.insurance_provider.strip() if body.insurance_provider else None,
+        insurance_id=body.insurance_id.strip() if body.insurance_id else None,
+        emergency_contact_name=body.emergency_contact_name.strip() if body.emergency_contact_name else None,
+        emergency_contact_phone=body.emergency_contact_phone.strip() if body.emergency_contact_phone else None,
+        emergency_contact_relation=body.emergency_contact_relation.strip() if body.emergency_contact_relation else None,
+    )
+    store.create_patient(patient)
+
+    visit = ScheduledVisit(
+        visit_id=store.new_id("visit-"),
+        patient_id=patient.patient_id,
+        visit_date=body.appointment_date,
+        visit_time=body.appointment_time,
+        provider_name=body.provider_name,
+        department=body.department,
+        reason=body.reason_for_visit,
+        status="scheduled",
+        notes="Created from first-time patient kiosk check-in.",
+    )
+    store.create_visit(visit)
+
+    assignment = AssignedForm(
+        assignment_id=store.new_id("assign-"),
+        visit_id=visit.visit_id,
+        template_id=template.template_id,
+        form_id=store.new_id("form-"),
+        assigned_by=body.assigned_by,
+        assigned_at=store.now_iso(),
+        status="prefilled",
+    )
+    store.create_assignment(assignment)
+
+    ai_engine.local_prefill(
+        FormSchema(
+            form_id=assignment.form_id,
+            form_name=template.name,
+            fields=template.fields,
+        ),
+        patient.patient_id,
+    )
+
+    return NewPatientCheckInResponse(
+        patient=patient,
+        visit=visit,
+        assignment_id=assignment.assignment_id,
+        message="New patient profile created. Please continue with form review and consent.",
+    )
 
 
 @router.post("/validate", response_model=PatientValidateResponse)
@@ -104,8 +181,17 @@ def get_checkin_forms(visit_id: str):
         if not template:
             continue
 
-        # Get prefilled form from the ai_engine in-memory store (populated after /intake/prefill)
-        prefilled = ai_engine.get_prefilled_form(assignment.assignment_id)
+        # Prefer the assigned form_id, then fall back to assignment_id for older records.
+        prefilled = ai_engine.get_prefilled_form(assignment.form_id or assignment.assignment_id)
+        if not prefilled:
+            prefilled = ai_engine.local_prefill(
+                FormSchema(
+                    form_id=assignment.form_id or assignment.assignment_id,
+                    form_name=template.name,
+                    fields=template.fields,
+                ),
+                visit.patient_id,
+            )
         filled_map: Dict[str, Any] = {}
         if prefilled:
             filled_map = {f.field_id: f for f in prefilled.filled_fields}
@@ -142,6 +228,7 @@ def get_checkin_forms(visit_id: str):
                 )
                 if field.required:
                     total_missing += 1
+            fields.append(cf)
 
         form_groups.append(CheckInFormGroup(
             assignment_id=assignment.assignment_id,
@@ -155,6 +242,65 @@ def get_checkin_forms(visit_id: str):
         forms=form_groups,
         total_missing=total_missing,
         total_needs_confirmation=total_needs_confirmation,
+    )
+
+
+@router.post("/checkin/{visit_id}/scan", response_model=CheckInScanResponse)
+async def scan_checkin_form(visit_id: str, file: UploadFile):
+    """
+    Accept a camera-captured image and map OCR'd values onto the visit's assigned intake forms.
+    The patient still reviews everything before submission.
+    """
+    visit = store.get_visit(visit_id)
+    if not visit:
+        raise HTTPException(status_code=404, detail=f"Visit {visit_id} not found.")
+
+    assignments = store.get_assignments_for_visit(visit_id)
+    if not assignments:
+        raise HTTPException(status_code=404, detail=f"No forms assigned to visit {visit_id}.")
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No image provided.")
+    if file.content_type not in SCAN_MIME_TYPES:
+        raise HTTPException(status_code=415, detail="Please upload a JPG, PNG, or WEBP image.")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded image is empty.")
+
+    try:
+        ocr_text = ai_engine.ocr_image_to_text(content, file.content_type or "image/png")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Camera scan OCR failed: {exc}")
+
+    merged_candidates: dict[str, CheckInScannedField] = {}
+    for assignment in assignments:
+        template = store.get_template(assignment.template_id)
+        if not template:
+            continue
+
+        form_schema = FormSchema(
+            form_id=assignment.form_id or assignment.assignment_id,
+            form_name=template.name,
+            fields=template.fields,
+        )
+        for candidate in ai_engine.extract_scanned_fields(form_schema, ocr_text):
+            existing = merged_candidates.get(candidate.field_id)
+            if not existing or candidate.confidence > existing.confidence:
+                merged_candidates[candidate.field_id] = candidate
+
+    scanned_fields = sorted(merged_candidates.values(), key=lambda field: (-field.confidence, field.label))
+    preview = ocr_text[:500] if ocr_text else None
+
+    return CheckInScanResponse(
+        visit_id=visit_id,
+        scanned_fields=scanned_fields,
+        applied_count=len(scanned_fields),
+        ocr_preview=preview,
+        message=(
+            f"Found {len(scanned_fields)} candidate field(s) from the camera scan. "
+            "Please review and edit anything that looks off."
+        ),
     )
 
 
@@ -229,7 +375,7 @@ def sign_consent(visit_id: str, body: CheckInSignRequest):
     store.update_visit_status(visit_id, "checked_in")
 
     patient = store.get_patient(visit.patient_id)
-    patient_name = patient.full_name if patient else "Patient"
+    patient_name = f"{patient.first_name} {patient.last_name}" if patient else "Patient"
 
     return CheckInSignResponse(
         visit_id=visit_id,

@@ -2,7 +2,9 @@
 # Agent brain — form parser, data retrieval, form filler, orchestrator.
 # Owner: AI (Person 2)
 
+import base64
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Dict
@@ -22,6 +24,7 @@ from app.models.schemas import (
     PrefilledField,
     PrefilledForm,
     FormStats,
+    CheckInScannedField,
     TranscriptTurn,
 )
 from app.services import fhir_service
@@ -293,6 +296,70 @@ def retrieve_and_diff(form_schema: FormSchema, patient_id: str) -> PrefilledForm
         filled_fields=filled,
         missing_fields=missing,
         questions=questions,
+        stats=FormStats(
+            total=len(form_schema.fields),
+            filled=len(filled),
+            missing=len(missing),
+        ),
+    )
+    _prefilled_forms[form_schema.form_id] = prefilled
+    return prefilled
+
+
+def local_prefill(form_schema: "FormSchema", patient_id: str) -> "PrefilledForm":
+    """
+    Fallback prefill that uses patient data directly from the store — no OpenAI needed.
+    Called when OPENAI_API_KEY is not set or the LLM call fails.
+    """
+    from app.services import store as _store
+    from datetime import date
+
+    patient = _store.get_patient(patient_id)
+
+    FIELD_MAP: dict = {}
+    if patient:
+        full_name = f"{patient.first_name} {patient.last_name}"
+        FIELD_MAP = {
+            "full_name": full_name,
+            "date_of_birth": patient.date_of_birth,
+            "gender": patient.gender,
+            "phone": patient.phone,
+            "email": patient.email,
+            "address": patient.address,
+            "insurance_provider": patient.insurance_provider,
+            "insurance_id": patient.insurance_id,
+            "emergency_contact_name": patient.emergency_contact_name,
+            "emergency_contact_phone": patient.emergency_contact_phone,
+            "emergency_contact_relation": patient.emergency_contact_relation,
+            "consent_signature": full_name,
+            "consent_date": date.today().isoformat(),
+        }
+        # remove None values
+        FIELD_MAP = {k: v for k, v in FIELD_MAP.items() if v is not None}
+
+    field_lookup = {f.field_id: f for f in form_schema.fields}
+    filled = []
+    missing = []
+
+    for field in form_schema.fields:
+        val = FIELD_MAP.get(field.field_id)
+        if val is not None:
+            filled.append(PrefilledField(field_id=field.field_id, value=val, source="ehr", confidence=0.9))
+        else:
+            missing.append(MissingField(
+                field_id=field.field_id,
+                label=field.label,
+                question=f"Could you please provide your {field.label.lower()}?",
+                type=field.type,
+                required=field.required,
+            ))
+
+    prefilled = PrefilledForm(
+        form_id=form_schema.form_id,
+        patient_id=patient_id,
+        filled_fields=filled,
+        missing_fields=missing,
+        questions=[],
         stats=FormStats(
             total=len(form_schema.fields),
             filled=len(filled),
@@ -632,6 +699,182 @@ def generate_clinical_brief(
 def run_intake_pipeline(ocr_text: str, patient_id: str) -> PrefilledForm:
     schema = parse_form(ocr_text)
     return retrieve_and_diff(schema, patient_id)
+
+
+_SCAN_EXTRACT_SYSTEM = """
+You are extracting structured patient intake values from OCR text captured from a paper form,
+insurance card, or ID shown to a clinic camera.
+
+You are given:
+- OCR text from the camera capture
+- the exact intake fields we care about
+
+Rules:
+- Only return values that are explicitly present in the OCR text.
+- Keep values concise and human-readable.
+- Dates must be YYYY-MM-DD when possible.
+- If the OCR text suggests a value but you are not fully confident, still return it with a lower confidence.
+- Never invent values.
+- Do not return empty strings.
+
+Return ONLY valid JSON:
+[
+  {
+    "field_id": "phone",
+    "value": "+15551234567",
+    "confidence": 0.88
+  }
+]
+""".strip()
+
+
+def ocr_image_to_text(image_bytes: bytes, mime_type: str = "image/png") -> str:
+    """
+    OCR an image captured from a camera using GPT-4o vision.
+    """
+    if not settings.openai_api_key:
+        raise ValueError("OpenAI API key is required for camera scanning.")
+
+    image_b64 = base64.b64encode(image_bytes).decode()
+    response = _client().chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "This is a photo of a patient intake form, ID, or insurance document. "
+                            "Extract all visible text exactly as it appears. Output plain text only."
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime_type};base64,{image_b64}", "detail": "high"},
+                    },
+                ],
+            }
+        ],
+        temperature=0,
+    )
+    return response.choices[0].message.content.strip()
+
+
+def _local_scan_extract(form_schema: FormSchema, ocr_text: str) -> list[CheckInScannedField]:
+    """
+    Lightweight label-based fallback for common intake fields when LLM extraction is unavailable.
+    """
+    results: list[CheckInScannedField] = []
+    lowered = ocr_text.lower()
+
+    def capture_after(label: str) -> str | None:
+        pattern = re.compile(rf"{re.escape(label.lower())}\s*[:\-]?\s*(.+)", re.IGNORECASE)
+        for line in ocr_text.splitlines():
+            match = pattern.search(line)
+            if match:
+                value = match.group(1).strip()
+                if value:
+                    return value
+        return None
+
+    aliases = {
+        "full_name": ["full name", "name"],
+        "date_of_birth": ["date of birth", "dob", "birth date"],
+        "phone": ["phone", "phone number", "mobile"],
+        "email": ["email", "email address"],
+        "address": ["address", "home address"],
+        "insurance_provider": ["insurance provider", "insurance company", "payor"],
+        "insurance_id": ["member id", "policy number", "insurance id", "subscriber id"],
+        "emergency_contact_name": ["emergency contact", "emergency contact name"],
+        "emergency_contact_phone": ["emergency contact phone", "emergency phone"],
+        "emergency_contact_relation": ["relationship", "relation to patient"],
+        "reason_for_visit": ["reason for visit", "chief complaint", "visit reason"],
+    }
+
+    for field in form_schema.fields:
+        for alias in aliases.get(field.field_id, []):
+            value = capture_after(alias)
+            if value:
+                results.append(
+                    CheckInScannedField(
+                        field_id=field.field_id,
+                        label=field.label,
+                        value=value,
+                        confidence=0.62,
+                        field_type=field.type,
+                        section=field.section,
+                    )
+                )
+                break
+
+    if not results and "insurance" in lowered:
+        insurance_field = next((field for field in form_schema.fields if field.field_id == "insurance_provider"), None)
+        if insurance_field:
+            results.append(
+                CheckInScannedField(
+                    field_id=insurance_field.field_id,
+                    label=insurance_field.label,
+                    value="Insurance text detected - review needed",
+                    confidence=0.35,
+                    field_type=insurance_field.type,
+                    section=insurance_field.section,
+                )
+            )
+
+    return results
+
+
+def extract_scanned_fields(form_schema: FormSchema, ocr_text: str) -> list[CheckInScannedField]:
+    """
+    Map OCR text from a camera capture back onto a known intake form schema.
+    """
+    if not settings.openai_api_key:
+        return _local_scan_extract(form_schema, ocr_text)
+
+    fields_payload = [
+        {
+            "field_id": field.field_id,
+            "label": field.label,
+            "type": field.type,
+            "section": field.section,
+        }
+        for field in form_schema.fields
+    ]
+
+    prompt = (
+        f"Known intake fields:\n{json.dumps(fields_payload, indent=2)}\n\n"
+        f"OCR text:\n{ocr_text}"
+    )
+
+    raw = _chat(_SCAN_EXTRACT_SYSTEM, prompt)
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return _local_scan_extract(form_schema, ocr_text)
+
+    field_lookup = {field.field_id: field for field in form_schema.fields}
+    results: list[CheckInScannedField] = []
+    for item in parsed:
+        field = field_lookup.get(item.get("field_id"))
+        value = item.get("value")
+        if not field or value in (None, ""):
+            continue
+        results.append(
+            CheckInScannedField(
+                field_id=field.field_id,
+                label=field.label,
+                value=value,
+                confidence=float(item.get("confidence", 0.75)),
+                field_type=field.type,
+                section=field.section,
+            )
+        )
+
+    return results or _local_scan_extract(form_schema, ocr_text)
 
 
 def finalize_form(form_id: str, responses: CallResponses) -> CompletedForm:

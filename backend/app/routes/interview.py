@@ -16,11 +16,21 @@ from fastapi import APIRouter, HTTPException
 from app.models.schemas import (
     AnswerRequest,
     AnswerResponse,
+    FormSchema,
     IntakeCallSession,
     MissingField,
     StartSessionRequest,
 )
 from app.services import ai_engine, interview_engine, store
+
+PHONE_BLOCKLIST = {
+    "ssn",
+    "social_security",
+    "patient_signature",
+    "signature",
+    "consent_signature",
+    "consent_date",
+}
 
 router = APIRouter()
 
@@ -59,12 +69,25 @@ def start_session(body: StartSessionRequest):
 
         all_missing: list[MissingField] = []
         for assignment in assignments:
-            if assignment.form_id:
-                prefilled = ai_engine.get_prefilled_form(assignment.form_id)
-            else:
-                prefilled = ai_engine.get_prefilled_form(assignment.assignment_id)
+            template = store.get_template(assignment.template_id)
+            if not template:
+                continue
+
+            form_id = assignment.form_id or assignment.assignment_id
+            prefilled = ai_engine.get_prefilled_form(form_id)
+            if not prefilled:
+                prefilled = ai_engine.local_prefill(
+                    FormSchema(
+                        form_id=form_id,
+                        form_name=template.name,
+                        fields=template.fields,
+                    ),
+                    visit.patient_id,
+                )
             if prefilled:
-                all_missing.extend(prefilled.missing_fields)
+                all_missing.extend(
+                    [field for field in prefilled.missing_fields if field.field_id not in PHONE_BLOCKLIST]
+                )
 
         if not all_missing:
             # No missing fields — nothing to collect; create a trivial completed session

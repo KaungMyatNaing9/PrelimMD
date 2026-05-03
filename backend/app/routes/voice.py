@@ -10,6 +10,7 @@ from starlette.websockets import WebSocketState
 from app.config import settings
 from app.models.schemas import (
     FollowUpResponse,
+    FormSchema,
     IntakeCallSession,
     MissingField,
     TranscribeResponse,
@@ -682,8 +683,24 @@ def _append_ai_turn(session_id: str, content: str, field_ids: list[str] | None =
 
 def _intake_fields_for_visit(visit_id: str) -> list[MissingField]:
     fields: list[MissingField] = []
+    visit = store.get_visit(visit_id)
+    if not visit:
+        return fields
     for assignment in store.get_assignments_for_visit(visit_id):
-        prefilled = ai_engine.get_prefilled_form(assignment.form_id or assignment.assignment_id)
+        template = store.get_template(assignment.template_id)
+        if not template:
+            continue
+        form_id = assignment.form_id or assignment.assignment_id
+        prefilled = ai_engine.get_prefilled_form(form_id)
+        if not prefilled:
+            prefilled = ai_engine.local_prefill(
+                FormSchema(
+                    form_id=form_id,
+                    form_name=template.name,
+                    fields=template.fields,
+                ),
+                visit.patient_id,
+            )
         if not prefilled:
             continue
         for field in prefilled.missing_fields:

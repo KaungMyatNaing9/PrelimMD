@@ -1,13 +1,14 @@
 # app/services/store.py
 # Central in-memory mock data store.
-# All entities are initialized from hardcoded mock data at import time.
+# Patient/visit/staff/form/task data is loaded from seed_data.py.
 # Routes and services import from here rather than maintaining their own state.
 #
 # Replace with a real database (SQLAlchemy + Alembic) when ready for production.
 
+import json
 import uuid
-from copy import deepcopy
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.models.schemas import (
@@ -23,6 +24,13 @@ from app.models.schemas import (
     StaffUser,
     VoiceCallSession,
 )
+from app.services.seed_data import ASSIGNED_FORMS as _SEED_FORMS
+from app.services.seed_data import FOLLOWUP_TASKS as _SEED_TASKS
+from app.services.seed_data import PATIENTS as _SEED_PATIENTS
+from app.services.seed_data import STAFF as _SEED_STAFF
+from app.services.seed_data import VISITS as _SEED_VISITS
+
+_RUNTIME_STORE_PATH = Path(__file__).resolve().parents[2] / "data" / "runtime_store.json"
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -30,59 +38,7 @@ from app.models.schemas import (
 # ════════════════════════════════════════════════════════════════════════════
 
 _PATIENTS: Dict[str, Patient] = {
-    "patient-001": Patient(
-        patient_id="patient-001",
-        first_name="Jane",
-        last_name="Smith",
-        date_of_birth="1985-03-14",
-        gender="female",
-        phone="+15550101",
-        email="jane.smith@email.com",
-        address="123 Main St, Chicago, IL 60601",
-        insurance_provider="BlueCross BlueShield",
-        insurance_id="BCB123456789",
-        emergency_contact_name="John Smith",
-        emergency_contact_phone="+15550102",
-        emergency_contact_relation="Spouse",
-    ),
-    "patient-002": Patient(
-        patient_id="patient-002",
-        first_name="Robert",
-        last_name="Johnson",
-        date_of_birth="1972-07-22",
-        gender="male",
-        phone="+15550201",
-    ),
-    "patient-003": Patient(
-        patient_id="patient-003",
-        first_name="Maria",
-        last_name="Garcia",
-        date_of_birth="1990-11-05",
-        gender="female",
-        phone="+15550301",
-        email="maria.garcia@email.com",
-        address="456 Oak Ave, Chicago, IL 60602",
-        insurance_provider="Aetna",
-        insurance_id="AET987654321",
-        emergency_contact_name="Carlos Garcia",
-        emergency_contact_phone="+15550302",
-        emergency_contact_relation="Brother",
-    ),
-    "patient-004": Patient(
-        patient_id="patient-004",
-        first_name="David",
-        last_name="Kim",
-        date_of_birth="1968-09-30",
-        gender="male",
-        phone="+15550401",
-        email="david.kim@email.com",
-        address="789 Elm St, Chicago, IL 60603",
-        insurance_provider="UnitedHealthcare",
-        insurance_id="UHC456789123",
-        emergency_contact_name="Susan Kim",
-        emergency_contact_phone="+15550402",
-        emergency_contact_relation="Spouse",
-    ),
+    pid: Patient(**data) for pid, data in _SEED_PATIENTS.items()
 }
 
 
@@ -91,56 +47,7 @@ _PATIENTS: Dict[str, Patient] = {
 # ════════════════════════════════════════════════════════════════════════════
 
 _VISITS: Dict[str, ScheduledVisit] = {
-    "visit-001": ScheduledVisit(
-        visit_id="visit-001",
-        patient_id="patient-001",
-        visit_date="2026-05-05",
-        visit_time="09:30",
-        provider_name="Dr. Sarah Chen",
-        department="Cardiology",
-        reason="Annual cardiac check-up",
-        status="scheduled",
-    ),
-    "visit-002": ScheduledVisit(
-        visit_id="visit-002",
-        patient_id="patient-001",
-        visit_date="2026-03-15",
-        visit_time="10:00",
-        provider_name="Dr. Sarah Chen",
-        department="Cardiology",
-        reason="Follow-up post medication change",
-        status="completed",
-    ),
-    "visit-003": ScheduledVisit(
-        visit_id="visit-003",
-        patient_id="patient-002",
-        visit_date="2026-05-06",
-        visit_time="14:00",
-        provider_name="Dr. James Williams",
-        department="General Practice",
-        reason="Cholesterol management review",
-        status="scheduled",
-    ),
-    "visit-004": ScheduledVisit(
-        visit_id="visit-004",
-        patient_id="patient-003",
-        visit_date="2026-05-07",
-        visit_time="11:15",
-        provider_name="Dr. James Williams",
-        department="General Practice",
-        reason="Post-op follow-up — appendectomy",
-        status="scheduled",
-    ),
-    "visit-005": ScheduledVisit(
-        visit_id="visit-005",
-        patient_id="patient-004",
-        visit_date="2026-05-08",
-        visit_time="08:45",
-        provider_name="Dr. Sarah Chen",
-        department="Cardiology",
-        reason="New patient — chest pain evaluation",
-        status="scheduled",
-    ),
+    vid: ScheduledVisit(**data) for vid, data in _SEED_VISITS.items()
 }
 
 
@@ -149,34 +56,7 @@ _VISITS: Dict[str, ScheduledVisit] = {
 # ════════════════════════════════════════════════════════════════════════════
 
 _STAFF: Dict[str, StaffUser] = {
-    "staff-001": StaffUser(
-        staff_id="staff-001",
-        name="Dr. Sarah Chen",
-        role="doctor",
-        department="Cardiology",
-        email="s.chen@clinic.example.com",
-    ),
-    "staff-002": StaffUser(
-        staff_id="staff-002",
-        name="Nurse Michael Torres",
-        role="nurse",
-        department="General Practice",
-        email="m.torres@clinic.example.com",
-    ),
-    "staff-003": StaffUser(
-        staff_id="staff-003",
-        name="Dr. James Williams",
-        role="doctor",
-        department="General Practice",
-        email="j.williams@clinic.example.com",
-    ),
-    "staff-004": StaffUser(
-        staff_id="staff-004",
-        name="Nurse Priya Patel",
-        role="nurse",
-        department="Cardiology",
-        email="p.patel@clinic.example.com",
-    ),
+    sid: StaffUser(**data) for sid, data in _SEED_STAFF.items()
 }
 
 
@@ -259,38 +139,7 @@ _TEMPLATES: Dict[str, FormTemplate] = {
 # ════════════════════════════════════════════════════════════════════════════
 
 _ASSIGNED_FORMS: Dict[str, AssignedForm] = {
-    "assign-001": AssignedForm(
-        assignment_id="assign-001",
-        visit_id="visit-001",
-        template_id="template-002",
-        assigned_by="staff-004",
-        assigned_at="2026-04-28T10:00:00Z",
-        status="assigned",
-    ),
-    "assign-002": AssignedForm(
-        assignment_id="assign-002",
-        visit_id="visit-003",
-        template_id="template-001",
-        assigned_by="staff-002",
-        assigned_at="2026-04-29T08:30:00Z",
-        status="assigned",
-    ),
-    "assign-003": AssignedForm(
-        assignment_id="assign-003",
-        visit_id="visit-004",
-        template_id="template-003",
-        assigned_by="staff-002",
-        assigned_at="2026-04-29T09:00:00Z",
-        status="assigned",
-    ),
-    "assign-004": AssignedForm(
-        assignment_id="assign-004",
-        visit_id="visit-005",
-        template_id="template-002",
-        assigned_by="staff-001",
-        assigned_at="2026-04-30T14:00:00Z",
-        status="assigned",
-    ),
+    aid: AssignedForm(**data) for aid, data in _SEED_FORMS.items()
 }
 
 
@@ -378,26 +227,66 @@ _QUESTION_BANK: Dict[str, FollowUpQuestion] = {
 # ════════════════════════════════════════════════════════════════════════════
 
 _SESSIONS: Dict[str, IntakeCallSession] = {}
-_FOLLOWUP_TASKS: Dict[str, PostDischargeFollowUpTask] = {}
 _FOLLOWUP_RESPONSES: Dict[str, FollowUpResponse] = {}
 _VOICE_CALL_SESSIONS: Dict[str, VoiceCallSession] = {}
 
-# Seed one example follow-up task for demo/testing
-_FOLLOWUP_TASKS["task-001"] = PostDischargeFollowUpTask(
-    task_id="task-001",
-    patient_id="patient-001",
-    visit_id="visit-002",
-    created_by="staff-001",
-    scheduled_at="2026-05-03T10:00:00Z",
-    status="scheduled",
-    questions=[
-        _QUESTION_BANK["qb-001"],
-        _QUESTION_BANK["qb-002"],
-        _QUESTION_BANK["qb-003"],
-        _QUESTION_BANK["qb-010"],
-    ],
-    created_at="2026-04-28T09:00:00Z",
-)
+# Seed follow-up tasks from seed_data, resolving question IDs to full objects
+_FOLLOWUP_TASKS: Dict[str, PostDischargeFollowUpTask] = {
+    tid: PostDischargeFollowUpTask(
+        **{k: v for k, v in data.items() if k != "question_ids"},
+        questions=[_QUESTION_BANK[qid] for qid in data["question_ids"] if qid in _QUESTION_BANK],
+    )
+    for tid, data in _SEED_TASKS.items()
+}
+
+
+def _persist_runtime_data():
+    _RUNTIME_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "patients": {key: value.model_dump() for key, value in _PATIENTS.items()},
+        "visits": {key: value.model_dump() for key, value in _VISITS.items()},
+        "assigned_forms": {key: value.model_dump() for key, value in _ASSIGNED_FORMS.items()},
+        "sessions": {key: value.model_dump() for key, value in _SESSIONS.items()},
+        "followup_tasks": {key: value.model_dump() for key, value in _FOLLOWUP_TASKS.items()},
+        "followup_responses": {key: value.model_dump() for key, value in _FOLLOWUP_RESPONSES.items()},
+        "voice_call_sessions": {key: value.model_dump() for key, value in _VOICE_CALL_SESSIONS.items()},
+    }
+    _RUNTIME_STORE_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _load_runtime_data():
+    if not _RUNTIME_STORE_PATH.exists():
+        return
+
+    try:
+        payload = json.loads(_RUNTIME_STORE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return
+
+    _PATIENTS.update({
+        key: Patient(**value) for key, value in payload.get("patients", {}).items()
+    })
+    _VISITS.update({
+        key: ScheduledVisit(**value) for key, value in payload.get("visits", {}).items()
+    })
+    _ASSIGNED_FORMS.update({
+        key: AssignedForm(**value) for key, value in payload.get("assigned_forms", {}).items()
+    })
+    _SESSIONS.update({
+        key: IntakeCallSession(**value) for key, value in payload.get("sessions", {}).items()
+    })
+    _FOLLOWUP_TASKS.update({
+        key: PostDischargeFollowUpTask(**value) for key, value in payload.get("followup_tasks", {}).items()
+    })
+    _FOLLOWUP_RESPONSES.update({
+        key: FollowUpResponse(**value) for key, value in payload.get("followup_responses", {}).items()
+    })
+    _VOICE_CALL_SESSIONS.update({
+        key: VoiceCallSession(**value) for key, value in payload.get("voice_call_sessions", {}).items()
+    })
+
+
+_load_runtime_data()
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -409,6 +298,11 @@ def get_all_patients() -> List[Patient]:
 
 def get_patient(patient_id: str) -> Optional[Patient]:
     return _PATIENTS.get(patient_id)
+
+def create_patient(patient: Patient) -> Patient:
+    _PATIENTS[patient.patient_id] = patient
+    _persist_runtime_data()
+    return patient
 
 def find_patient_by_identity(first_name: str, last_name: str, dob: str) -> Optional[Patient]:
     for p in _PATIENTS.values():
@@ -434,6 +328,11 @@ def get_all_visits(patient_id: Optional[str] = None) -> List[ScheduledVisit]:
 def get_visit(visit_id: str) -> Optional[ScheduledVisit]:
     return _VISITS.get(visit_id)
 
+def create_visit(visit: ScheduledVisit) -> ScheduledVisit:
+    _VISITS[visit.visit_id] = visit
+    _persist_runtime_data()
+    return visit
+
 def find_visit_by_date(patient_id: str, visit_date: str) -> Optional[ScheduledVisit]:
     for v in _VISITS.values():
         if v.patient_id == patient_id and v.visit_date == visit_date:
@@ -444,6 +343,7 @@ def update_visit_status(visit_id: str, status: str) -> Optional[ScheduledVisit]:
     visit = _VISITS.get(visit_id)
     if visit:
         _VISITS[visit_id] = visit.model_copy(update={"status": status})
+        _persist_runtime_data()
     return _VISITS.get(visit_id)
 
 
@@ -481,12 +381,14 @@ def get_assignment(assignment_id: str) -> Optional[AssignedForm]:
 
 def create_assignment(assignment: AssignedForm) -> AssignedForm:
     _ASSIGNED_FORMS[assignment.assignment_id] = assignment
+    _persist_runtime_data()
     return assignment
 
 def update_assignment(assignment_id: str, updates: Dict[str, Any]) -> Optional[AssignedForm]:
     a = _ASSIGNED_FORMS.get(assignment_id)
     if a:
         _ASSIGNED_FORMS[assignment_id] = a.model_copy(update=updates)
+        _persist_runtime_data()
     return _ASSIGNED_FORMS.get(assignment_id)
 
 
@@ -499,12 +401,14 @@ def get_session(session_id: str) -> Optional[IntakeCallSession]:
 
 def save_session(session: IntakeCallSession) -> IntakeCallSession:
     _SESSIONS[session.session_id] = session
+    _persist_runtime_data()
     return session
 
 def update_session(session_id: str, updates: Dict[str, Any]) -> Optional[IntakeCallSession]:
     s = _SESSIONS.get(session_id)
     if s:
         _SESSIONS[session_id] = s.model_copy(update=updates)
+        _persist_runtime_data()
     return _SESSIONS.get(session_id)
 
 
@@ -523,12 +427,14 @@ def get_followup_task(task_id: str) -> Optional[PostDischargeFollowUpTask]:
 
 def create_followup_task(task: PostDischargeFollowUpTask) -> PostDischargeFollowUpTask:
     _FOLLOWUP_TASKS[task.task_id] = task
+    _persist_runtime_data()
     return task
 
 def update_followup_task(task_id: str, updates: Dict[str, Any]) -> Optional[PostDischargeFollowUpTask]:
     t = _FOLLOWUP_TASKS.get(task_id)
     if t:
         _FOLLOWUP_TASKS[task_id] = t.model_copy(update=updates)
+        _persist_runtime_data()
     return _FOLLOWUP_TASKS.get(task_id)
 
 
@@ -541,6 +447,7 @@ def get_responses_for_task(task_id: str) -> List[FollowUpResponse]:
 
 def save_followup_response(response: FollowUpResponse) -> FollowUpResponse:
     _FOLLOWUP_RESPONSES[response.response_id] = response
+    _persist_runtime_data()
     return response
 
 
@@ -553,6 +460,7 @@ def get_voice_call_session(call_sid: str) -> Optional[VoiceCallSession]:
 
 def save_voice_call_session(call_session: VoiceCallSession) -> VoiceCallSession:
     _VOICE_CALL_SESSIONS[call_session.call_sid] = call_session
+    _persist_runtime_data()
     return call_session
 
 def update_voice_call_session(call_sid: str, updates: Dict[str, Any]) -> Optional[VoiceCallSession]:
@@ -560,6 +468,7 @@ def update_voice_call_session(call_sid: str, updates: Dict[str, Any]) -> Optiona
     if call_session:
         updates = {**updates, "updated_at": now_iso()}
         _VOICE_CALL_SESSIONS[call_sid] = call_session.model_copy(update=updates)
+        _persist_runtime_data()
     return _VOICE_CALL_SESSIONS.get(call_sid)
 
 

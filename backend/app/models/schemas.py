@@ -330,6 +330,91 @@ class CheckInSignResponse(BaseModel):
     message: str
 
 
+class CheckInScannedField(BaseModel):
+    field_id: str
+    label: str
+    value: Any
+    confidence: float
+    field_type: str
+    section: str
+    source: str = "camera_scan"
+
+
+class CheckInScanResponse(BaseModel):
+    visit_id: str
+    scanned_fields: List[CheckInScannedField]
+    applied_count: int
+    ocr_preview: Optional[str] = None
+    message: str
+
+
+class NewPatientCheckInRequest(BaseModel):
+    first_name: str
+    last_name: str
+    date_of_birth: str
+    gender: str
+    phone: str
+    appointment_date: str
+    appointment_time: str
+    reason_for_visit: str
+    email: Optional[str] = None
+    address: Optional[str] = None
+    insurance_provider: Optional[str] = None
+    insurance_id: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    department: str = "General Medicine"
+    provider_name: str = "Care Team"
+    template_id: str = "template-001"
+    assigned_by: str = "staff-001"
+
+
+class NewPatientCheckInResponse(BaseModel):
+    patient: Patient
+    visit: ScheduledVisit
+    assignment_id: str
+    message: str
+
+
+class IntakeFormOverview(BaseModel):
+    assignment_id: str
+    template_id: str
+    form_name: str
+    status: str
+    total_fields: int
+    filled_fields: int
+    remaining_fields: int
+    call_remaining_fields: int
+    completion_percent: int
+    remaining_field_labels: List[str] = []
+    call_questions: List[str] = []
+
+
+class IntakeOverviewResponse(BaseModel):
+    visit_id: str
+    patient_id: str
+    total_forms: int
+    total_fields: int
+    filled_fields: int
+    remaining_fields: int
+    call_remaining_fields: int
+    completion_percent: int
+    forms: List[IntakeFormOverview]
+
+
+class IntakeCallScheduleResponse(BaseModel):
+    visit_id: str
+    session_id: str
+    scheduled_at: str
+    status: str
+    remaining_fields: int
+    call_remaining_fields: int
+    patient_phone: Optional[str] = None
+    voice_start_path: str
+    note: str
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # Voice
 # ════════════════════════════════════════════════════════════════════════════
