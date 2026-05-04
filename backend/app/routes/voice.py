@@ -830,6 +830,13 @@ def _absolute_url(path: str, query: dict[str, str] | None = None) -> str:
 async def _incoming_params(request: Request) -> dict[str, str]:
     params = dict(request.query_params)
     content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            payload = await request.json()
+            if isinstance(payload, dict):
+                params.update({k: str(v) for k, v in payload.items() if v is not None})
+        except Exception:
+            pass
     if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
         form = await request.form()
         params.update({k: str(v) for k, v in form.items()})

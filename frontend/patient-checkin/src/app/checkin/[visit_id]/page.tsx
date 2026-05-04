@@ -3,10 +3,12 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  createVoiceAssistantSocket,
   getCheckinForms,
   signConsent,
   submitCheckin,
   synthesizeVoice,
+  type VoiceAssistantSocketEvent,
   type CheckInField,
   type CheckInFormGroup,
 } from "@/lib/api";
@@ -25,6 +27,14 @@ type BrowserSpeechRecognition = {
 type SpeechRecognitionCtor = new () => BrowserSpeechRecognition;
 type MergedField = CheckInField & { form_names: string[] };
 type VoiceMessage = { role: "assistant" | "patient"; text: string };
+type AssistantState = "idle" | "speaking" | "listening" | "thinking";
+type PaceMode = "guided" | "quick";
+type AssistantPlan = {
+  field_ids: string[];
+  prompt: string;
+  help_text: string;
+  speed_hint?: "fast" | "steady" | "slow";
+};
 
 const STEP_LABELS = ["Verify", "Review Form", "Complete Fields", "Sign & Submit"];
 const STEP_KEYS: Step[] = ["review", "missing", "sign", "done"];
@@ -155,6 +165,11 @@ export default function CheckinPage() {
   const lastAskedFieldRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
+  const assistantSocketRef = useRef<WebSocket | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
   const [formGroups, setFormGroups] = useState<CheckInFormGroup[]>([]);
   const [step, setStep] = useState<Step>("review");
@@ -169,6 +184,11 @@ export default function CheckinPage() {
   const [voiceGuide, setVoiceGuide] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState<Record<string, boolean>>({});
   const [voiceMessages, setVoiceMessages] = useState<VoiceMessage[]>([]);
+  const [assistantState, setAssistantState] = useState<AssistantState>("idle");
+  const [paceMode, setPaceMode] = useState<PaceMode>("quick");
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [assistantReady, setAssistantReady] = useState(false);
+  const [assistantPlan, setAssistantPlan] = useState<AssistantPlan | null>(null);
 
   useEffect(() => {
     if (!visit_id) return;
@@ -189,6 +209,8 @@ export default function CheckinPage() {
       if (audioUrlRef.current) {
         URL.revokeObjectURL(audioUrlRef.current);
       }
+      assistantSocketRef.current?.close();
+      setAssistantState("idle");
       recognitionRef.current?.stop();
     };
   }, []);
@@ -242,6 +264,7 @@ export default function CheckinPage() {
 
   async function speakText(text: string) {
     try {
+      setAssistantState("speaking");
       const { audioUrl, fallbackText } = await synthesizeVoice(text);
       if (audioUrl) {
         if (audioRef.current) {
@@ -253,6 +276,8 @@ export default function CheckinPage() {
         audioUrlRef.current = audioUrl;
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
+        audio.onended = () => setAssistantState("idle");
+        audio.onerror = () => setAssistantState("idle");
         await audio.play();
         return;
       }
@@ -271,13 +296,79 @@ export default function CheckinPage() {
       if (preferredVoice) utterance.voice = preferredVoice;
       utterance.rate = 0.98;
       utterance.pitch = 1.04;
+      utterance.onend = () => setAssistantState("idle");
+      utterance.onerror = () => setAssistantState("idle");
       window.speechSynthesis.speak(utterance);
     } catch {
+      setAssistantState("idle");
       setError("Voice playback could not be started.");
     }
   }
 
-  function startDictation(fieldId: string, onText: (text: string) => void, options?: { autoAdvance?: boolean; echoPatient?: boolean }) {
+  function sendUtteranceToAssistant(transcript: string, field: MergedField | null) {
+    const socket = assistantSocketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN || !field) {
+      return;
+    }
+    socket.send(
+      JSON.stringify({
+        type: "utterance",
+        transcript,
+        pace: paceMode,
+        field_id: field.field_id,
+        field_label: field.label,
+        question: questionPrompt(field),
+        help_text: questionHelp(field),
+        remaining_labels: missingFields.map((item) => item.label),
+      })
+    );
+  }
+
+  function ensureAssistantSocket() {
+    if (assistantSocketRef.current && assistantSocketRef.current.readyState === WebSocket.OPEN) {
+      return;
+    }
+    const socket = createVoiceAssistantSocket();
+    assistantSocketRef.current = socket;
+    socket.onopen = () => {
+      setAssistantReady(true);
+      socket.send(JSON.stringify({ type: "ping" }));
+    };
+    socket.onclose = () => {
+      setAssistantReady(false);
+    };
+    socket.onerror = () => {
+      setAssistantReady(false);
+    };
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as VoiceAssistantSocketEvent;
+        if (payload.type === "pong") {
+          setAssistantReady(true);
+          return;
+        }
+        if (payload.type === "assistant") {
+          setVoiceMessages((current) => [...current, { role: "assistant", text: payload.reply }]);
+          if (paceMode === "guided" || payload.should_repeat || payload.speed_hint === "slow") {
+            void speakText(payload.reply);
+          }
+          return;
+        }
+        if (payload.type === "partial") {
+          setLiveTranscript(payload.transcript);
+          return;
+        }
+        if (payload.type === "final") {
+          setLiveTranscript(payload.transcript);
+          return;
+        }
+      } catch {
+        // ignore malformed messages
+      }
+    };
+  }
+
+  function startDictation(fieldId: string, onText: (text: string) => void, options?: { autoAdvance?: boolean; echoPatient?: boolean; field?: MergedField | null }) {
     const ctor = (window as Window & { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition
       || (window as Window & { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
     if (!ctor) {
@@ -289,17 +380,21 @@ export default function CheckinPage() {
     recognition.lang = "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
+    setAssistantState("listening");
+    setLiveTranscript("");
     recognition.onresult = (event) => {
       const transcript = event.results?.[0]?.[0]?.transcript?.trim() ?? "";
+      setLiveTranscript(transcript);
       if (transcript) {
+        setAssistantState("thinking");
         onText(transcript);
         if (options?.echoPatient) {
           setVoiceMessages((current) => [
             ...current,
             { role: "patient", text: transcript },
-            { role: "assistant", text: "Thanks. I saved that answer for your form." },
           ]);
         }
+        sendUtteranceToAssistant(transcript, options?.field ?? null);
         if (options?.autoAdvance) {
           window.setTimeout(() => {
             setGuideIndex((current) => Math.min(missingFields.length - 1, current + 1));
@@ -308,7 +403,10 @@ export default function CheckinPage() {
       }
     };
     recognition.onerror = () => setError("Could not transcribe your answer. Please try again or type it.");
-    recognition.onend = () => setListeningField((current) => (current === fieldId ? null : current));
+    recognition.onend = () => {
+      setListeningField((current) => (current === fieldId ? null : current));
+      setAssistantState("idle");
+    };
     recognitionRef.current = recognition;
     setListeningField(fieldId);
     recognition.start();
@@ -319,19 +417,24 @@ export default function CheckinPage() {
   }
 
   function startVoiceAssistant() {
+    ensureAssistantSocket();
     setVoiceGuide(true);
     setGuideIndex(0);
     lastAskedFieldRef.current = null;
     const firstField = missingFields[0];
     if (!firstField) return;
-    const intro = "Hi, I’m your PrelimMD assistant. I’ll walk through the remaining questions one at a time. You can answer by voice or type if you prefer.";
+    const intro = paceMode === "quick"
+      ? "Hi, I’m your PrelimMD assistant. I’ll keep this fast and only speak when it helps."
+      : "Hi, I’m your PrelimMD assistant. I’ll walk through the remaining questions one at a time. You can answer by voice or type if you prefer.";
     const firstQuestion = questionPrompt(firstField);
     lastAskedFieldRef.current = firstField.field_id;
     setVoiceMessages([
       { role: "assistant", text: intro },
       { role: "assistant", text: firstQuestion },
     ]);
-    void speakText(`${intro} ${firstQuestion}`);
+    if (paceMode === "guided") {
+      void speakText(`${intro} ${firstQuestion}`);
+    }
   }
 
   const askCurrentGuideQuestion = useCallback((field: MergedField) => {
@@ -461,8 +564,17 @@ export default function CheckinPage() {
             <div>
               <div className="voice-assistant-title">Talk with PrelimMD Assistant</div>
               <div className="voice-assistant-copy">
-                Start a conversational intake flow. The assistant asks one question at a time, explains confusing fields, and saves your spoken answers into the form.
+                Start a conversational intake flow. In quick mode it keeps prompts short and gets out of the way. In guided mode it speaks more and slows down when needed.
               </div>
+            </div>
+            <div className="pace-toggle" role="group" aria-label="Assistant pace">
+              <button className={`btn ${paceMode === "quick" ? "btn-primary" : "btn-secondary"} btn-sm`} type="button" onClick={() => setPaceMode("quick")}>
+                Quick mode
+              </button>
+              <button className={`btn ${paceMode === "guided" ? "btn-primary" : "btn-secondary"} btn-sm`} type="button" onClick={() => setPaceMode("guided")}>
+                Guided mode
+              </button>
+              <span className="pace-status">{assistantReady ? "Live assistant connected" : "Live assistant will connect when started"}</span>
             </div>
             <div className="btn-row">
               <button className="btn btn-secondary" type="button" onClick={() => (voiceGuide ? setVoiceGuide(false) : startVoiceAssistant())}>
@@ -479,10 +591,24 @@ export default function CheckinPage() {
             {voiceGuide && guideField ? (
               <div className="voice-guide-panel">
                 <div className="voice-avatar-row">
-                  <div className="voice-avatar">AI</div>
+                  <div className={`voice-avatar ${assistantState !== "idle" ? `is-${assistantState}` : ""}`}>
+                    <span>AI</span>
+                    <div className="voice-avatar-rings" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
                   <div>
                     <div className="voice-guide-step">Question {guideIndex + 1} of {missingFields.length}</div>
                     <div className="voice-guide-question">{questionPrompt(guideField)}</div>
+                    <div className="voice-guide-status">
+                      {assistantState === "speaking" ? "Assistant is speaking..." : null}
+                      {assistantState === "listening" ? "Assistant is listening..." : null}
+                      {assistantState === "thinking" ? "Assistant is saving your answer..." : null}
+                      {assistantState === "idle" ? "Assistant is ready." : null}
+                    </div>
+                    {liveTranscript ? <div className="voice-live-transcript">Heard: {liveTranscript}</div> : null}
                   </div>
                 </div>
                 <div className="voice-transcript">
@@ -506,7 +632,7 @@ export default function CheckinPage() {
                       startDictation(
                         guideField.field_id,
                         (text) => setAnswers((prev) => ({ ...prev, [guideField.field_id]: text })),
-                        { autoAdvance: true, echoPatient: true }
+                        { autoAdvance: true, echoPatient: true, field: guideField }
                       )
                     }
                   >
@@ -532,7 +658,7 @@ export default function CheckinPage() {
                 listening={listeningField === field.field_id}
                 onChange={(value) => setAnswers((prev) => ({ ...prev, [field.field_id]: value }))}
                 onSpeak={() => speakText(questionPrompt(field))}
-                onDictate={() => startDictation(field.field_id, (text) => setAnswers((prev) => ({ ...prev, [field.field_id]: text })))}
+                onDictate={() => startDictation(field.field_id, (text) => setAnswers((prev) => ({ ...prev, [field.field_id]: text })), { field })}
               />
             ))}
           </div>

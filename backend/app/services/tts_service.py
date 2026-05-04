@@ -26,7 +26,10 @@ def synthesize(text: str, voice_id: Optional[str] = None) -> Optional[bytes]:
         logger.debug("ElevenLabs API key not set — returning text only.")
         return None
 
-    vid = voice_id or settings.elevenlabs_voice_id
+    vid = (voice_id or settings.elevenlabs_voice_id).split("#", 1)[0].strip()
+    if not vid:
+        logger.error("ElevenLabs voice ID is empty after normalization.")
+        return None
 
     try:
         # Use the ElevenLabs SDK if available

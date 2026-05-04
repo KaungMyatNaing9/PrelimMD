@@ -165,6 +165,20 @@ export async function synthesizeVoice(text: string): Promise<{ audioUrl: string 
   return { audioUrl: null, fallbackText: payload.text || text };
 }
 
+export type VoiceAssistantSocketEvent =
+  | { type: "plan"; field_ids: string[]; prompt: string; help_text: string; speed_hint?: "fast" | "steady" | "slow" }
+  | { type: "assistant"; transcript: string; reply: string; mode?: string; should_repeat?: boolean; speed_hint?: "fast" | "steady" | "slow" }
+  | { type: "partial"; transcript: string; confidence?: number }
+  | { type: "pong" }
+  | { type: "error"; message?: string };
+
+export function createVoiceAssistantSocket(): WebSocket {
+  const url = new URL(BASE);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/voice/stream";
+  return new WebSocket(url.toString());
+}
+
 export const submitCheckin = (visitId: string, answers: Record<string, unknown>) =>
   post(`/patient/checkin/${visitId}/submit`, { answers });
 
