@@ -12,6 +12,7 @@
 
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, UploadFile
+import re
 
 from app.models.schemas import (
     AssignedForm,
@@ -24,18 +25,198 @@ from app.models.schemas import (
     CheckInSignResponse,
     CheckInSubmitRequest,
     CheckInSubmitResponse,
+    CompletedForm,
+    CompletedFormField,
     FormSchema,
     NewPatientCheckInRequest,
     NewPatientCheckInResponse,
     PatientValidateRequest,
     PatientValidateResponse,
+    PatientAllergy,
+    PatientCondition,
+    PatientMedication,
     Patient,
+    ReusableFieldFact,
     ScheduledVisit,
 )
 from app.services import ai_engine, store
 
 router = APIRouter()
 SCAN_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"}
+
+PATIENT_PROFILE_FIELDS = {
+    "date_of_birth",
+    "gender",
+    "phone",
+    "email",
+    "address",
+    "insurance_provider",
+    "insurance_id",
+    "emergency_contact_name",
+    "emergency_contact_phone",
+    "emergency_contact_relation",
+}
+
+REUSABLE_FIELDS = PATIENT_PROFILE_FIELDS | {
+    "full_name",
+    "current_medications",
+    "known_allergies",
+    "conditions",
+}
+
+
+def _split_list_value(value: Any) -> list[str]:
+    if value in (None, "", [], {}):
+        return []
+    text = str(value)
+    parts = [item.strip(" .") for item in re.split(r"[\n,;]+", text) if item.strip()]
+    return [part for part in parts if part]
+
+
+def _save_reusable_facts(patient_id: str, answers: Dict[str, Any], confirmed_at: str):
+    for key, value in answers.items():
+        if key not in REUSABLE_FIELDS or value in (None, "", [], {}):
+            continue
+        store.save_reusable_field_fact(
+            ReusableFieldFact(
+                fact_id=f"fact-{patient_id}-{key}",
+                patient_id=patient_id,
+                field_key=key,
+                value=str(value),
+                source="patient_kiosk",
+                confidence=100,
+                last_confirmed_at=confirmed_at,
+            )
+        )
+
+
+def _save_clinical_history(patient_id: str, answers: Dict[str, Any], confirmed_at: str):
+    medication_items = _split_list_value(answers.get("current_medications"))
+    medications = [
+        PatientMedication(
+            medication_id=f"med-{patient_id}-{index}",
+            patient_id=patient_id,
+            name=item,
+            dosage=None,
+            frequency=None,
+            active=True,
+            last_confirmed_at=confirmed_at,
+        )
+        for index, item in enumerate(medication_items, start=1)
+    ]
+    if "current_medications" in answers:
+        store.replace_patient_medications(patient_id, medications)
+
+    allergy_items = _split_list_value(answers.get("known_allergies"))
+    allergies = [
+        PatientAllergy(
+            allergy_id=f"allergy-{patient_id}-{index}",
+            patient_id=patient_id,
+            substance=item,
+            reaction=None,
+            severity=None,
+            active=True,
+            last_confirmed_at=confirmed_at,
+        )
+        for index, item in enumerate(allergy_items, start=1)
+    ]
+    if "known_allergies" in answers:
+        store.replace_patient_allergies(patient_id, allergies)
+
+    condition_items = _split_list_value(answers.get("conditions"))
+    conditions = [
+        PatientCondition(
+            condition_id=f"condition-{patient_id}-{index}",
+            patient_id=patient_id,
+            condition=item,
+            status="active",
+            onset=None,
+            active=True,
+            last_confirmed_at=confirmed_at,
+        )
+        for index, item in enumerate(condition_items, start=1)
+    ]
+    if "conditions" in answers:
+        store.replace_patient_conditions(patient_id, conditions)
+
+
+def _persist_patient_answers(visit_id: str, patient_id: str, answers: Dict[str, Any]):
+    patient_updates = {
+        key: value
+        for key, value in answers.items()
+        if key in PATIENT_PROFILE_FIELDS and value not in (None, "", [], {})
+    }
+    if patient_updates:
+        store.update_patient(patient_id, patient_updates)
+
+    reason_for_visit = answers.get("reason_for_visit")
+    if reason_for_visit not in (None, "", [], {}):
+        visit = store.get_visit(visit_id)
+        if visit:
+            store.create_visit(
+                ScheduledVisit(
+                    **{
+                        **visit.model_dump(),
+                        "reason": str(reason_for_visit).strip(),
+                    }
+                )
+            )
+    confirmed_at = answers.get("consent_date") or store.now_iso()
+    _save_reusable_facts(patient_id, answers, str(confirmed_at))
+    _save_clinical_history(patient_id, answers, str(confirmed_at))
+
+
+def _save_completed_visit_forms(visit_id: str, patient_id: str, answers: Dict[str, Any]):
+    assignments = store.get_assignments_for_visit(visit_id)
+    for assignment in assignments:
+        template = store.get_template(assignment.template_id)
+        if not template:
+            continue
+
+        form_id = assignment.form_id or assignment.assignment_id
+        prefilled = ai_engine.get_prefilled_form(form_id)
+        if not prefilled:
+            prefilled = ai_engine.prefill_from_db(
+                FormSchema(
+                    form_id=form_id,
+                    form_name=template.name,
+                    fields=template.fields,
+                ),
+                patient_id,
+                visit_id=visit_id,
+            )
+
+        allowed_fields = {field.field_id for field in template.fields}
+        merged: dict[str, CompletedFormField] = {
+            field.field_id: CompletedFormField(
+                field_id=field.field_id,
+                value=field.value,
+                source=field.source,
+                needs_review=field.needs_review,
+            )
+            for field in prefilled.filled_fields
+        }
+
+        for key, value in answers.items():
+            if key not in allowed_fields or value in (None, "", [], {}):
+                continue
+            merged[key] = CompletedFormField(
+                field_id=key,
+                value=value,
+                source="patient_kiosk",
+                needs_review=False,
+            )
+
+        completed = CompletedForm(
+            form_id=form_id,
+            patient_id=patient_id,
+            visit_id=visit_id,
+            template_id=assignment.template_id,
+            fields=list(merged.values()),
+            created_at=store.now_iso(),
+        )
+        store.save_completed_form(completed)
+        store.update_assignment(assignment.assignment_id, {"status": "signed"})
 
 
 @router.post("/new-checkin", response_model=NewPatientCheckInResponse)
@@ -96,6 +277,7 @@ def create_new_patient_checkin(body: NewPatientCheckInRequest):
             fields=template.fields,
         ),
         patient.patient_id,
+        visit_id=visit.visit_id,
     )
 
     return NewPatientCheckInResponse(
@@ -191,6 +373,7 @@ def get_checkin_forms(visit_id: str):
                     fields=template.fields,
                 ),
                 visit.patient_id,
+                visit_id=visit.visit_id,
             )
         filled_map: Dict[str, Any] = {}
         if prefilled:
@@ -209,6 +392,7 @@ def get_checkin_forms(visit_id: str):
                     required=field.required,
                     prefilled_value=pf.value,
                     source=pf.source,
+                    last_confirmed_at=pf.last_confirmed_at,
                     needs_confirmation=True,
                     is_missing=False,
                 )
@@ -223,6 +407,7 @@ def get_checkin_forms(visit_id: str):
                     required=field.required,
                     prefilled_value=None,
                     source=None,
+                    last_confirmed_at=None,
                     needs_confirmation=False,
                     is_missing=True,
                 )
@@ -367,6 +552,7 @@ def submit_checkin_answers(visit_id: str, body: CheckInSubmitRequest):
     else:
         merged = {**existing.collected_answers, **body.answers}
         store.update_session(session_key, {"collected_answers": merged})
+    _persist_patient_answers(visit_id, visit.patient_id, body.answers)
 
     return CheckInSubmitResponse(
         visit_id=visit_id,
@@ -399,6 +585,24 @@ def sign_consent(visit_id: str, body: CheckInSignRequest):
         "status": "completed",
         "completed_at": store.now_iso(),
     })
+    _persist_patient_answers(
+        visit_id,
+        visit.patient_id,
+        {
+            **(store.get_session(session_key).collected_answers if store.get_session(session_key) else {}),
+            "consent_signature": body.signature.strip(),
+            "consent_date": body.signed_at,
+        },
+    )
+    _save_completed_visit_forms(
+        visit_id,
+        visit.patient_id,
+        {
+            **(store.get_session(session_key).collected_answers if store.get_session(session_key) else {}),
+            "consent_signature": body.signature.strip(),
+            "consent_date": body.signed_at,
+        },
+    )
 
     # Update visit status to checked_in
     store.update_visit_status(visit_id, "checked_in")

@@ -1,5 +1,7 @@
 /* Kiosk-optimized design — large targets, high contrast, minimal typing */
 :root {
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --surface: rgba(255, 255, 255, 0.92);
   --surface-strong: rgba(255, 255, 255, 0.98);
   --line: rgba(20, 39, 59, 0.1);
@@ -53,6 +55,12 @@ button, input, select, textarea { font: inherit; }
   width: 3rem; height: 3rem; border-radius: 1rem;
   background: linear-gradient(135deg, var(--accent-strong), var(--accent-warm));
   color: #fff8ef; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.06em;
+}
+.brand-mark.image-mark {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  padding: 0.2rem;
 }
 .brand-name { font-family: var(--font-display), Georgia, serif; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; }
 .brand-sub { font-size: 0.85rem; color: var(--text-soft); }
@@ -196,6 +204,114 @@ button, input, select, textarea { font: inherit; }
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.82rem;
   line-height: 1.55;
+}
+
+.voice-assistant-card,
+.voice-guide-panel,
+.final-review-card,
+.edit-row,
+.question-header,
+.question-tools {
+  display: flex;
+}
+
+.voice-assistant-card {
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.voice-assistant-title {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.voice-assistant-copy,
+.final-review-meta {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.voice-guide-panel {
+  flex-direction: column;
+  gap: 0.85rem;
+  padding-top: 0.5rem;
+}
+
+.voice-guide-step {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.voice-guide-question {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.question-header {
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.question-tools {
+  gap: 0.45rem;
+}
+
+.icon-btn {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  width: 2.65rem;
+  height: 2.65rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  border-color: rgba(13, 148, 136, 0.45);
+  background: rgba(13, 148, 136, 0.08);
+}
+
+.final-review-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.final-review-card {
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.final-review-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.edit-row {
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.review-flag.subtle {
+  color: var(--accent-strong);
 }
 
 /* ── Welcome hero ── */

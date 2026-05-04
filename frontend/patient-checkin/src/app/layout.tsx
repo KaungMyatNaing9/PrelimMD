@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import Image from "next/image";
 import "../styles/globals.css";
 
 export const metadata: Metadata = {
@@ -7,25 +7,17 @@ export const metadata: Metadata = {
   description: "Self check-in kiosk for patients",
 };
 
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-display",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-body",
-});
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${fraunces.variable} ${inter.variable}`}>
+      <body>
         <div className="shell">
           <header className="site-header">
             <div className="header-inner">
               <div className="brand">
-                <div className="brand-mark">PM</div>
+                <div className="brand-mark image-mark">
+                  <Image src="/logo.png" alt="PrelimMD logo" width={40} height={40} priority />
+                </div>
                 <div>
                   <div className="brand-name">PrelimMD</div>
                   <div className="brand-sub">Patient Check-In</div>

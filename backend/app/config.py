@@ -6,6 +6,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # ── Database ───────────────────────────────────────────────────────────────
+    database_url: str = "postgresql+psycopg://prelimmd:prelimmd@localhost:5432/prelimmd"
+
     # ── AI ──────────────────────────────────────────────────────────────────────
     openai_api_key: str = ""
 

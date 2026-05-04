@@ -1,105 +1,181 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 const navItems = [
-  { href: "/", label: "Dashboard", short: "Overview" },
-  { href: "/patients", label: "Patients", short: "Roster" },
-  { href: "/followups", label: "Follow-Ups", short: "Calls" },
+  { href: "/", label: "Dashboard" },
+  { href: "/patients", label: "Patients" },
+  { href: "/calls", label: "Call Schedule" },
+  { href: "/forms-library", label: "Forms Library" },
+  { href: "/risk-alerts", label: "Risk Alerts" },
 ];
 
 function isActive(pathname: string, href: string) {
-  if (href === "/") {
-    return pathname === "/";
-  }
-
+  if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function titleForPath(pathname: string) {
+function headerCopy(pathname: string) {
   if (pathname.startsWith("/patients")) {
     return {
-      title: "Patient Roster",
-      subtitle: "Review demographics, upcoming visits, and intake readiness.",
+      title: "Patients",
+      subtitle: "Create patient records, schedule visits, and open the intake workspace.",
     };
   }
-
-  if (pathname.startsWith("/followups")) {
+  if (pathname.startsWith("/calls")) {
     return {
-      title: "Follow-Up Operations",
-      subtitle: "Track post-discharge calls, question sets, and patient outreach.",
+      title: "Call Schedule",
+      subtitle: "Monitor intake calls, completed questions, and patients still needing kiosk follow-up.",
     };
   }
-
+  if (pathname.startsWith("/forms-library")) {
+    return {
+      title: "Forms Library",
+      subtitle: "Review reusable templates and upload new PDFs or photos for AI parsing.",
+    };
+  }
+  if (pathname.startsWith("/risk-alerts")) {
+    return {
+      title: "Risk Alerts",
+      subtitle: "Review follow-up tasks and any flags that need nurse or doctor attention.",
+    };
+  }
   if (pathname.startsWith("/visits/")) {
     return {
-      title: "Visit Workflow",
-      subtitle: "Prepare forms, run prefill, and launch the patient-facing check-in flow.",
+      title: "Visit Workspace",
+      subtitle: "Assign forms, generate AI prefill, schedule calls, and hand off to patient check-in.",
     };
   }
-
   return {
-    title: "Nurse Portal",
-    subtitle: "Pre-visit intake, scheduling, and readiness at a glance.",
+    title: "Dashboard",
+    subtitle: "Today’s schedule, intake readiness, call progress, and follow-up risk visibility.",
   };
+}
+
+function formatTodayLabel() {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date());
 }
 
 export function PortalChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const header = titleForPath(pathname);
+  const [collapsed, setCollapsed] = useState(false);
+  const [todayLabel, setTodayLabel] = useState("");
+  const header = useMemo(() => headerCopy(pathname), [pathname]);
+
+  useEffect(() => {
+    setTodayLabel(formatTodayLabel());
+  }, []);
 
   return (
-    <div className="portal-shell">
-      <aside className="portal-sidebar">
-        <Link href="/" className="portal-brand">
-          <div className="portal-brand-mark">PM</div>
-          <div>
-            <div className="portal-brand-name">PrelimMD</div>
-            <div className="portal-brand-sub">Clinical Staff Portal</div>
-          </div>
-        </Link>
-
-        <div className="portal-section-label">Workspace</div>
-        <nav className="portal-nav">
-          {navItems.map((item) => {
-            const active = isActive(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`portal-nav-item${active ? " active" : ""}`}
-              >
-                <span className="portal-nav-title">{item.label}</span>
-                <span className="portal-nav-sub">{item.short}</span>
+    <div className="min-h-screen bg-slate-50">
+      <div className="flex min-h-screen">
+        <aside
+          className={`hidden border-r border-white/10 bg-navy text-white lg:flex lg:flex-col ${
+            collapsed ? "lg:w-24" : "lg:w-72"
+          } transition-all duration-300`}
+        >
+          <div className="flex h-full flex-col px-4 py-6">
+            <div className="mb-8 flex items-center justify-between gap-3">
+              <Link href="/" className="flex min-w-0 items-center gap-3 overflow-hidden">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white p-2 shadow-clinical">
+                  <Image src="/logo.png" alt="PrelimMD logo" width={36} height={36} priority />
+                </div>
+                {!collapsed ? (
+                  <div className="min-w-0">
+                    <div className="truncate text-lg font-semibold tracking-tight">PrelimMD</div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-white/60">Nurse Portal</div>
+                  </div>
+                ) : null}
               </Link>
-            );
-          })}
-        </nav>
+              <button
+                type="button"
+                onClick={() => setCollapsed((value) => !value)}
+                className="rounded-xl px-3 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+                aria-label="Toggle sidebar"
+              >
+                {collapsed ? "→" : "←"}
+              </button>
+            </div>
 
-        <div className="portal-sidebar-card">
-          <div className="portal-section-label">Today</div>
-          <h3>AI-assisted intake</h3>
-          <p>
-            Route patients into prefill, kiosk review, and follow-up scheduling from one place.
-          </p>
+            <nav className="space-y-2">
+              {navItems.map((item) => {
+                const active = isActive(pathname, item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center rounded-2xl px-4 py-3 text-sm font-medium transition ${
+                      active ? "bg-white text-navy shadow-clinical" : "text-white/75 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    {collapsed ? item.label[0] : item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className="mt-auto rounded-3xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-teal text-sm font-semibold text-white">
+                  SM
+                </div>
+                {!collapsed ? (
+                  <div>
+                    <div className="text-sm font-semibold">Sarah Mitchell, RN</div>
+                    <div className="text-xs text-white/60">Pre-Visit Intake Nurse</div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur">
+            <div className="flex flex-col gap-4 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">
+                  {todayLabel || " "}
+                </div>
+                <h1 className="mt-1 text-3xl font-semibold tracking-tight text-navy">{header.title}</h1>
+                <p className="mt-1 max-w-3xl text-sm text-slate">{header.subtitle}</p>
+              </div>
+              <div className="w-full max-w-md">
+                <input
+                  className="field-input"
+                  placeholder="Search patients, visits, or forms"
+                  aria-label="Search"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 overflow-x-auto px-5 pb-4 lg:hidden">
+              {navItems.map((item) => {
+                const active = isActive(pathname, item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                      active ? "bg-navy text-white" : "bg-slate-100 text-slate-700"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </header>
+
+          <main className="flex-1 px-5 py-6 sm:px-6">{children}</main>
         </div>
-      </aside>
-
-      <div className="portal-main">
-        <header className="portal-topbar">
-          <div>
-            <div className="portal-topbar-label">Pre-Visit Operations</div>
-            <h1>{header.title}</h1>
-            <p>{header.subtitle}</p>
-          </div>
-          <div className="portal-user-pill">
-            <span className="portal-user-dot" />
-            Nurse / Doctor
-          </div>
-        </header>
-
-        <main className="portal-content">{children}</main>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models.schemas import Patient
+from app.models.schemas import CreatePatientRequest, Patient
 from app.services import store
 
 router = APIRouter()
@@ -23,3 +23,24 @@ def get_patient(patient_id: str):
     if not patient:
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found.")
     return patient
+
+
+@router.post("", response_model=Patient)
+def create_patient(body: CreatePatientRequest):
+    """Create a patient record from the staff portal."""
+    patient = Patient(
+        patient_id=store.new_id("patient-"),
+        first_name=body.first_name.strip(),
+        last_name=body.last_name.strip(),
+        date_of_birth=body.date_of_birth,
+        gender=body.gender,
+        phone=body.phone.strip() if body.phone else None,
+        email=body.email.strip() if body.email else None,
+        address=body.address.strip() if body.address else None,
+        insurance_provider=body.insurance_provider.strip() if body.insurance_provider else None,
+        insurance_id=body.insurance_id.strip() if body.insurance_id else None,
+        emergency_contact_name=body.emergency_contact_name.strip() if body.emergency_contact_name else None,
+        emergency_contact_phone=body.emergency_contact_phone.strip() if body.emergency_contact_phone else None,
+        emergency_contact_relation=body.emergency_contact_relation.strip() if body.emergency_contact_relation else None,
+    )
+    return store.create_patient(patient)

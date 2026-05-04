@@ -83,6 +83,7 @@ def start_session(body: StartSessionRequest):
                         fields=template.fields,
                     ),
                     visit.patient_id,
+                    visit_id=visit.visit_id,
                 )
             if prefilled:
                 all_missing.extend(

@@ -1,248 +1,307 @@
 # PrelimMD — System State
 
-Last updated: 2026-05-02
+Last updated: 2026-05-04
 
 ---
 
-## Architecture Overview
+## Current Status
 
-```
-                        ┌──────────────────────┐
-                        │     Staff Portal      │  (not built yet)
-                        │  frontend/staff-portal│
-                        └─────────┬────────────┘
-                                  │ HTTP (localhost:3000)
-                        ┌─────────▼────────────┐
-                        │   FastAPI Backend     │
-                        │  localhost:8000       │
-                        │                      │
-                        │  ┌────────────────┐  │
-                        │  │  store.py      │  │  ← Mock in-memory DB
-                        │  │  (patients,    │  │
-                        │  │   visits,      │  │
-                        │  │   sessions,    │  │
-                        │  │   tasks)       │  │
-                        │  └────────────────┘  │
-                        │  ┌────────────────┐  │
-                        │  │ interview_     │  │  ← Session orchestration
-                        │  │ engine.py      │  │
-                        │  └────────────────┘  │
-                        │  ┌────────────────┐  │
-                        │  │  ai_engine.py  │  │  ← Form parsing + EHR diff
-                        │  └────────────────┘  │
-                        │  ┌────────────────┐  │
-                        │  │  tts_service   │  │  ← ElevenLabs TTS (graceful fallback)
-                        │  └────────────────┘  │
-                        │  ┌────────────────┐  │
-                        │  │ voice.py       │  │  ← Twilio webhook + TwiML call loop
-                        │  └────────────────┘  │
-                        │  ┌────────────────┐  │
-                        │  │ tools/voice_   │  │  ← Local Streamlit Twilio simulator
-                        │  │ call_tester.py │  │
-                        │  └────────────────┘  │
-                        └─────────┬────────────┘
-                                  │ HTTP (localhost:5173 or 3001)
-                        ┌─────────▼────────────┐
-                        │  Patient Check-In     │  (not built yet)
-                        │  frontend/patient-    │
-                        │  checkin/             │
-                        └──────────────────────┘
-```
+PrelimMD currently consists of:
 
-**External APIs used:**
-- OpenAI GPT-4o — form parsing, EHR diff agent, clinical brief generation
-- Deepgram — speech-to-text transcription
-- ElevenLabs — text-to-speech (optional; fallback to text if not configured)
-- Twilio — voice webhooks, speech gather, optional outbound call initiation
+- A FastAPI backend in `backend/`
+- A Next.js patient kiosk app in `frontend/patient-checkin/`
+- A Next.js staff portal app in `frontend/staff-portal/`
+
+This is no longer a backend-only repo. Both frontends exist and are wired to real backend routes, but there are still a few setup and product gaps before the full workflow feels complete.
+
+As of the latest pass, the staff portal navigation/runtime has been rebuilt and now uses a single consistent route shell instead of the older mixed layout structure that caused hydration failures.
+
+### Intended Workflow
+
+1. Staff creates or selects a patient and schedules a visit.
+2. Staff opens the visit workspace and either assigns an existing template or uploads/scans a new form to create one.
+3. AI prefill runs immediately after assignment and generates:
+   - prefilled known fields
+   - remaining call questions for the AI intake call
+4. Staff schedules the AI intake call for the remaining questions.
+5. Patient arrives and self check-in verifies identity, reviews the prefilled form, fills only the missing fields, and signs consent.
+6. The visit status updates to `checked_in` in the staff portal.
 
 ---
 
-## Working Endpoints
+## Local Run Commands
 
-### Health
+### 1. Backend
+
+```bash
+cd backend
+source venv/bin/activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-GET  /health         → service status, config flags
+
+Backend docs:
+
+- Swagger UI: `http://localhost:8000/docs`
+- Health: `http://localhost:8000/health`
+
+### 2. Patient Check-In
+
+First install dependencies once:
+
+```bash
+cd frontend/patient-checkin
+npm ci
 ```
 
-### Staff Portal
+Run it:
+
+```bash
+cd frontend/patient-checkin
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 ```
-GET  /patients                          → list all patients
-GET  /patients/{patient_id}             → single patient
 
-GET  /visits                            → list visits (?patient_id= filter)
-GET  /visits/{visit_id}                 → single visit
-GET  /visits/{visit_id}/forms           → forms assigned to this visit
+Local URL:
 
-GET  /intake/templates                  → all available form templates
-POST /intake/assign                     → assign form template to visit
-POST /intake/prefill/{visit_id}         → run EHR diff on all assigned forms
-POST /intake/schedule-call              → record intake call as scheduled
-GET  /intake/session/{session_id}       → review completed intake session
+- `http://localhost:3001`
 
-GET  /followups/question-bank           → browse standard follow-up questions
-POST /followups/schedule                → schedule a post-discharge follow-up
-GET  /followups                         → list follow-up tasks (?patient_id= filter)
-GET  /followups/{task_id}               → single follow-up task
-GET  /followups/{task_id}/responses     → collected responses for a task
+### 3. Staff Portal
+
+First install dependencies once:
+
+```bash
+cd frontend/staff-portal
+npm ci
 ```
+
+Run it:
+
+```bash
+cd frontend/staff-portal
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
+```
+
+Optional if you want the "Open patient kiosk" button to point somewhere other than local port `3001`:
+
+```bash
+NEXT_PUBLIC_PATIENT_CHECKIN_URL=http://localhost:3001
+```
+
+Local URL:
+
+- `http://localhost:3000`
+
+### Recommended terminal layout
+
+Use three terminals:
+
+1. backend on `:8000`
+2. staff portal on `:3000`
+3. patient check-in on `:3001`
+
+---
+
+## How The Pieces Connect
+
+```text
+Staff Portal (Next.js :3000)
+  ├─ POST /patients
+  ├─ POST /visits
+  ├─ GET /patients
+  ├─ GET /visits
+  ├─ GET /visits/{id}/forms
+  ├─ GET /intake/templates
+  ├─ POST /intake/templates/upload
+  ├─ GET /intake/overview/{visit_id}
+  ├─ POST /intake/assign
+  ├─ POST /intake/prefill/{visit_id}
+  ├─ POST /intake/schedule-call
+  ├─ GET /followups/question-bank
+  ├─ GET /followups
+  └─ POST /followups/schedule
+
+Patient Check-In (Next.js :3001)
+  ├─ POST /patient/validate
+  ├─ POST /patient/new-checkin
+  ├─ GET /patient/checkin/{visit_id}/forms
+  ├─ POST /patient/checkin/{visit_id}/submit
+  └─ POST /patient/checkin/{visit_id}/sign
+
+FastAPI Backend (:8000)
+  ├─ Postgres-backed store
+  ├─ completed-form history persisted in Postgres
+  ├─ normalized reusable patient history tables for meds/allergies/conditions
+  ├─ intake / follow-up orchestration
+  ├─ OCR + template parsing + prefill logic
+  ├─ voice/Twilio routes
+  └─ legacy forms/report routes
+```
+
+Both frontends use `NEXT_PUBLIC_API_URL` and otherwise fall back to `http://localhost:8000`.
+
+---
+
+## What Is Implemented Now
+
+### Backend
+
+Implemented and verified from code:
+
+- Patients API
+- Visits API
+- Intake templates, upload, assignment, prefill, readiness overview, call scheduling
+- DB-first prefill using patient record, visit record, prior intake sessions, and prior completed forms
+- Patient identity validation
+- Returning-patient kiosk form review and submission
+- New-patient kiosk profile creation
+- Staff-side template upload/scan route
+- Follow-up question bank and task scheduling
+- Interview/session orchestration
+- Voice/Twilio endpoints
+- Legacy forms/report routes kept in place
+
+Validation completed:
+
+- `venv/bin/python -c "from app.main import app; print(app.version)"` passed
+- `venv/bin/python -m compileall app` passed
+
+### Patient Check-In Frontend
+
+Implemented pages:
+
+- `/`
+- `/verify`
+- `/new-patient`
+- `/checkin/[visit_id]`
+- `/complete`
+
+Implemented behavior:
+
+- returning-patient identity verification
+- first-time patient profile creation
+- merged prefilled field review/edit across duplicated form fields
+- complete missing-field completion across all remaining questions
+- typed-signature consent submit
+- per-question speaker playback
+- per-question microphone dictation
+- guided voice-fill mode for conversation-style completion
+- final merged review before signature
+
+Validation completed:
+
+- `npx tsc --noEmit` passed
+
+### Staff Portal Frontend
+
+Implemented pages:
+
+- `/`
+- `/calls`
+- `/forms-library`
+- `/visits`
+- `/patients`
+- `/risk-alerts`
+- `/visits/[id]`
+- `/followups`
+- `/followups/[id]`
+
+Implemented behavior:
+
+- dashboard with schedule, call, completion, and risk summaries
+- patient creation and visit scheduling
+- patient roster search
+- scheduled visit queue
+- visit detail workflow
+- assign saved form templates
+- upload/scan new forms from staff side
+- auto-trigger prefill after assignment/upload
+- intake overview display
+- schedule AI intake call
+- call schedule view backed by stored intake sessions
+- forms library view backed by stored templates
+- risk alerts view backed by follow-up flags
+- open patient kiosk link
+- auto-refresh on focus/interval for staff-visible visit status updates
+
+Validation completed:
+
+- `npx tsc --noEmit` passed
+- `npm run lint` passed
+- `npm run build` passed
+
+---
+
+## What Is Still Missing Or Weak
+
+### Frontend/runtime blockers
+
+1. The staff portal now supports setup workflows and core navigation, but review workflows are still thin.
+
+2. The patient verify page accepts a `visit_id` hint but does not currently use it to streamline lookup.
+
+### Product/UI gaps
+
+1. The staff portal does not yet expose:
+   - intake session transcript/review
+   - follow-up responses review
+   - report/clinical brief review
+
+2. There is no auth on either frontend or backend.
+
+3. Patient-side accessibility help is read-aloud only, not full voice answer capture.
+
+### Platform gaps
+
+1. Core workflow data is now stored in Postgres, and completed intake forms are now persisted too, but AI report caches are still process-memory only.
+2. `fhir_service.py` is still mock-only.
+3. Voice scheduling does not yet automatically trigger outbound calls from staff actions.
+4. Build/test automation is minimal.
+
+### Security gap
+
+`backend/.env` currently contains real-looking service credentials. That file should remain local-only, be excluded from sharing, and the current keys should be rotated if they were ever exposed outside the developer machine.
+
+---
+
+## Verified Build/Check Notes
+
+### Backend
+
+- Import: passed
+- Python compile: passed
 
 ### Patient Check-In
-```
-POST /patient/validate                          → verify patient identity
-GET  /patient/checkin/{visit_id}/forms          → get prefilled forms
-POST /patient/checkin/{visit_id}/submit         → save patient answers
-POST /patient/checkin/{visit_id}/sign           → record consent, mark checked in
-```
 
-### Session Orchestration
-```
-POST /interview/start                   → create intake or followup session
-POST /interview/answer                  → submit patient answer, get next question
-GET  /interview/session/{session_id}    → full session with conversation
-POST /interview/complete                → close session
-```
+- `npm ci`: completed
+- `npx tsc --noEmit`: passed
+- `npm run lint`: passed
+- `npm run build`: passed
 
-### Voice
-```
-POST /voice/transcribe                  → audio file → transcript (Deepgram)
-WS   /voice/stream                      → live WebSocket STT streaming
-POST /voice/synthesize                  → text → MP3 audio (ElevenLabs)
-GET  /voice/test-twiml                  → sample XML/TwiML response
-GET|POST /voice/intake/start            → Twilio intake start webhook, asks for patient name
-POST /voice/intake/answer               → Twilio intake answer webhook, verifies DOB, stores answers
-GET|POST /voice/followup/start          → Twilio follow-up start webhook
-POST /voice/followup/answer             → Twilio follow-up answer webhook
-POST /voice/call/start                  → optional outbound call via Twilio REST API
-```
+### Staff Portal
 
-### Local Developer Tool
-```
-streamlit run backend/tools/voice_call_tester.py
-```
-Simulates Twilio-style call starts and answers against the existing `/voice/*` routes.
+- `npm ci`: completed
+- `npx tsc --noEmit`: passed
+- `npm run lint`: passed
+- `npm run build`: passed
+- `npm run build`: passed
 
-### Legacy (kept for compatibility)
-```
-POST /forms/upload                      → upload and OCR-parse a form PDF
-GET  /forms/{form_id}/schema            → get parsed form schema
-POST /forms/{form_id}/prefill           → run EHR diff on a specific form
-POST /forms/{form_id}/submit            → submit call responses
-GET  /forms/{form_id}/completed         → get completed form
-GET  /calls/{call_id}/questions         → get compound call questions
-POST /calls/{call_id}/next-question     → get adaptive next question
-POST /calls/{call_id}/responses         → submit call responses
-GET  /report/{form_id}                  → clinical brief JSON
-GET  /report/{form_id}/pdf              → download clinical brief PDF
-```
+### Staff Portal
+
+- `npm ci`: completed
+- `npx tsc --noEmit`: passed
+- `npm run lint`: passed
+- `npm run build`: passed
 
 ---
 
-## Mock Data (in `services/store.py`)
+## Seeded Data Notes
 
-### Patients
-| ID | Name | DOB |
-|---|---|---|
-| patient-001 | Jane Smith | 1985-03-14 |
-| patient-002 | Robert Johnson | 1972-07-22 |
-| patient-003 | Maria Garcia | 1990-11-05 |
-| patient-004 | David Kim | 1968-09-30 |
+The backend still uses seeded/mock data from `app/services/store.py`, including:
 
-### Scheduled Visits
-| ID | Patient | Date | Status |
-|---|---|---|---|
-| visit-001 | Jane Smith | 2026-05-05 | scheduled |
-| visit-002 | Jane Smith | 2026-03-15 | completed |
-| visit-003 | Robert Johnson | 2026-05-06 | scheduled |
-| visit-004 | Maria Garcia | 2026-05-07 | scheduled |
-| visit-005 | David Kim | 2026-05-08 | scheduled |
+- patients
+- visits
+- templates
+- assignments
+- follow-up question bank
+- at least one seeded follow-up task
 
-### Form Templates
-| ID | Name | Category |
-|---|---|---|
-| template-001 | General Intake Form | general_intake |
-| template-002 | Cardiology Pre-Visit Form | cardiology |
-| template-003 | Post-Op Follow-Up Assessment | post_op |
-
-### Assigned Forms
-| ID | Visit | Template |
-|---|---|---|
-| assign-001 | visit-001 (Jane, Cardiology) | template-002 (Cardiology) |
-| assign-002 | visit-003 (Robert, GP) | template-001 (General) |
-| assign-003 | visit-004 (Maria, GP post-op) | template-003 (Post-Op) |
-| assign-004 | visit-005 (David, Cardiology) | template-002 (Cardiology) |
-
-### Question Bank
-12 standard follow-up questions across categories:
-`symptoms`, `medication`, `mood`, `activity`
-
-IDs: `qb-001` through `qb-012`
-
-### Seeded Follow-Up Task
-| ID | Patient | Visit | Status |
-|---|---|---|---|
-| task-001 | Jane Smith (patient-001) | visit-002 | scheduled |
-
----
-
-## Current Limitations
-
-1. **All state is in-memory** — restarting the server clears sessions, follow-up results, and kiosk answers. Data seeded in `store.py` is always re-initialized on startup.
-2. **No auth** — all endpoints are open. JWT/API key auth must be added before any staging/production deployment.
-3. **No real EHR** — `fhir_service.py` returns hardcoded mock patient data.
-4. **Twilio state is still mock-store based** — `CallSid` mappings are kept in `store.py`, so active calls are lost on restart.
-5. **ElevenLabs `<Play>` requires a public URL** — without `PUBLIC_BASE_URL`/ngrok, voice calls fall back to Twilio `<Say>`.
-6. **DOB parsing is MVP-level** — common numeric and month-name phrases work; more natural spoken DOB variants are not fully normalized yet.
-7. **Interview/session creation still assumes prior setup** — intake calls work best after forms are assigned and prefill has generated missing fields.
-8. **Form prefill requires OpenAI key** — `ai_engine.py` calls GPT-4o for EHR diff and question generation.
-
----
-
-## Voice Architecture
-
-### Phone-call flow
-
-1. Twilio hits `/voice/intake/start` or `/voice/followup/start`
-2. Backend resolves or creates an existing interview session
-3. Backend creates a `VoiceCallSession` keyed by Twilio `CallSid`
-4. TwiML returns a speech `<Gather>` asking for name, then DOB
-5. After verification:
-   - intake mode asks only remaining missing fields from assigned/prefilled forms
-   - follow-up mode asks scheduled question-bank/custom follow-up questions
-6. Each answer is stored in `IntakeCallSession.collected_answers`
-7. Follow-up answers are also persisted as `FollowUpResponse`
-8. Concerning or medical-advice-seeking answers are flagged
-9. The call ends with TwiML `<Hangup>`
-
-### Audio behavior
-
-- Preferred path: ElevenLabs synthesizes audio, FastAPI serves it at `/static/tts/...`, and Twilio uses `<Play>`
-- Fallback path: Twilio uses `<Say>` when ElevenLabs or a public base URL is unavailable
-
-### Local testing path
-
-1. Developer runs FastAPI locally on `http://localhost:8000`
-2. Developer runs `streamlit run tools/voice_call_tester.py` from `backend/`
-3. The tester sends Twilio-style form POSTs with fake `CallSid`, `From`, `To`, `SpeechResult`, and `Confidence`
-4. The tester parses returned TwiML and shows:
-   - raw XML
-   - `<Say>` text
-   - `<Play>` URL
-   - `<Gather action>`
-   - `<Redirect>`
-   - `<Hangup>`
-5. The tester can optionally query `GET /interview/session/{session_id}` for current session state when a known session ID is available
-
----
-
-## Future Frontend Folder Plan
-
-```
-frontend/
-├── staff-portal/          ← Staff Portal (nurses/doctors)
-│   └── README.md          ← spec (complete)
-└── patient-checkin/       ← Patient Self Check-In (kiosk)
-    └── README.md          ← spec (complete)
-```
-
-Both portals will be built as separate React/Next.js apps that consume the FastAPI backend.
-CORS is already configured to accept requests from `localhost:3000`, `localhost:5173`, and `localhost:3001`.
+This is enough to exercise the current frontends locally. The seeded dataset is written into Postgres on first initialization and then persists across restarts unless the database volume is reset.

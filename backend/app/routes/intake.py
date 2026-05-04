@@ -9,9 +9,10 @@
 #   5. Session starts via:         POST /interview/start or /voice/intake/start
 #   6. Staff reviews session:      GET  /intake/session/{session_id}
 
+import os
 from typing import Optional
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
 
 from app.models.schemas import (
     AssignedForm,
@@ -23,6 +24,7 @@ from app.models.schemas import (
     IntakeFormOverview,
     IntakeOverviewResponse,
     MissingField,
+    UploadTemplateResponse,
 )
 from app.services import ai_engine, interview_engine, store
 
@@ -36,6 +38,8 @@ PHONE_BLOCKLIST = {
     "consent_signature",
     "consent_date",
 }
+
+SCAN_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"}
 
 
 def _assignment_schema(assignment: AssignedForm, template: FormTemplate) -> FormSchema:
@@ -51,7 +55,8 @@ def _prefilled_for_assignment(assignment: AssignedForm, patient_id: str, templat
     prefilled = ai_engine.get_prefilled_form(schema.form_id)
     if prefilled:
         return prefilled
-    return ai_engine.local_prefill(schema, patient_id)
+    visit = store.get_visit(assignment.visit_id)
+    return ai_engine.prefill_from_db(schema, patient_id, visit_id=visit.visit_id if visit else None)
 
 
 def _call_safe_missing_fields(prefilled) -> list[MissingField]:
@@ -141,6 +146,60 @@ def list_form_templates():
     return store.get_all_templates()
 
 
+@router.post("/templates/upload", response_model=UploadTemplateResponse)
+async def upload_form_template(
+    file: UploadFile = File(...),
+    name: Optional[str] = Form(default=None),
+    description: Optional[str] = Form(default=None),
+    category: str = Form(default="custom_intake"),
+):
+    """
+    Parse a PDF or camera image into a reusable template record that nurses can assign later.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No form file provided.")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded form file is empty.")
+
+    ext_to_mime = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".heic": "image/heic",
+        ".heif": "image/heif",
+        ".pdf": "application/pdf",
+    }
+    content_type = file.content_type or ext_to_mime.get(os.path.splitext(file.filename)[1].lower(), "")
+    if content_type not in SCAN_MIME_TYPES:
+        raise HTTPException(status_code=415, detail="Please upload a PDF or image file.")
+
+    try:
+        if content_type == "application/pdf":
+            ocr_text = ai_engine.ocr_pdf_to_text(content)
+        else:
+            ocr_text = ai_engine.ocr_image_to_text(content, content_type)
+        parsed_schema = ai_engine.parse_form(ocr_text)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Template parsing failed: {exc}")
+
+    template = FormTemplate(
+        template_id=store.new_id("template-"),
+        name=(name or parsed_schema.form_name or os.path.splitext(file.filename)[0]).strip(),
+        description=(description or f"Uploaded from {file.filename}.").strip(),
+        category=category.strip(),
+        fields=parsed_schema.fields,
+    )
+    store.create_template(template)
+    return UploadTemplateResponse(
+        template=template,
+        parsed_schema=parsed_schema,
+        message="Template uploaded and saved for staff assignment.",
+    )
+
+
 @router.post("/assign", response_model=AssignedForm)
 def assign_form(body: AssignFormRequest):
     """
@@ -194,10 +253,7 @@ def prefill_visit_forms(visit_id: str):
 
         form_schema = _assignment_schema(assignment, template)
 
-        try:
-            prefilled = ai_engine.retrieve_and_diff(form_schema, visit.patient_id)
-        except Exception:
-            prefilled = ai_engine.local_prefill(form_schema, visit.patient_id)
+        prefilled = ai_engine.prefill_from_db(form_schema, visit.patient_id, visit_id=visit.visit_id)
 
         store.update_assignment(
             assignment.assignment_id,
@@ -285,3 +341,9 @@ def get_intake_session(session_id: str):
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found.")
     return session
+
+
+@router.get("/sessions", response_model=list[IntakeCallSession])
+def list_intake_sessions():
+    """Return all intake call sessions for the call schedule view."""
+    return [session for session in store.get_all_sessions(session_type="intake")]

@@ -16,6 +16,18 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function postForm<T>(path: string, formData: FormData): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail ?? `POST ${path} → ${res.status}`);
+  }
+  return res.json();
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Patient {
@@ -25,6 +37,21 @@ export interface Patient {
   date_of_birth: string;
   gender: string;
   phone: string;
+  email?: string;
+  address?: string;
+  insurance_provider?: string;
+  insurance_id?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relation?: string;
+}
+
+export interface CreatePatientPayload {
+  first_name: string;
+  last_name: string;
+  date_of_birth: string;
+  gender: string;
+  phone?: string;
   email?: string;
   address?: string;
   insurance_provider?: string;
@@ -45,11 +72,22 @@ export interface ScheduledVisit {
   status: string;
 }
 
+export interface CreateVisitPayload {
+  patient_id: string;
+  visit_date: string;
+  visit_time: string;
+  provider_name: string;
+  department: string;
+  reason?: string;
+  notes?: string;
+}
+
 export interface FormTemplate {
   template_id: string;
   name: string;
   description: string;
   category: string;
+  fields?: Array<{ field_id: string; label: string; type: string; required: boolean; section: string }>;
 }
 
 export interface AssignedForm {
@@ -100,6 +138,27 @@ export interface IntakeCallSchedule {
   note: string;
 }
 
+export interface IntakeSession {
+  session_id: string;
+  session_type: "intake" | "followup";
+  visit_id?: string;
+  task_id?: string;
+  patient_id: string;
+  status: "in_progress" | "completed" | "abandoned";
+  conversation: Array<{
+    turn_id: string;
+    role: "ai" | "patient";
+    content: string;
+    timestamp: string;
+    field_ids_targeted: string[];
+  }>;
+  collected_answers: Record<string, unknown>;
+  flags: string[];
+  created_at: string;
+  completed_at?: string;
+  current_question_index: number;
+}
+
 export interface FollowUpTask {
   task_id: string;
   patient_id: string;
@@ -108,6 +167,9 @@ export interface FollowUpTask {
   scheduled_at: string;
   status: string;
   created_at: string;
+  session_id?: string;
+  results_summary?: string;
+  flags: string[];
   questions: Array<{ question_id: string; text: string; category: string }>;
 }
 
@@ -118,18 +180,43 @@ export interface FollowUpQuestion {
   concerning_keywords?: string[];
 }
 
+export interface UploadedTemplateResponse {
+  template: FormTemplate;
+  parsed_schema: {
+    form_id: string;
+    form_name: string;
+    fields: Array<{ field_id: string; label: string; type: string; required: boolean; section: string }>;
+  };
+  message: string;
+}
+
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export const getPatients = () => get<Patient[]>("/patients");
 export const getPatient = (id: string) => get<Patient>(`/patients/${id}`);
+export const createPatient = (payload: CreatePatientPayload) => post<Patient>("/patients", payload);
 
 export const getVisits = (patientId?: string) =>
   get<ScheduledVisit[]>(patientId ? `/visits?patient_id=${patientId}` : "/visits");
 export const getVisit = (id: string) => get<ScheduledVisit>(`/visits/${id}`);
 export const getVisitForms = (id: string) => get<AssignedForm[]>(`/visits/${id}/forms`);
+export const createVisit = (payload: CreateVisitPayload) => post<ScheduledVisit>("/visits", payload);
 
 export const getTemplates = () => get<FormTemplate[]>("/intake/templates");
 export const getIntakeOverview = (visitId: string) => get<IntakeOverview>(`/intake/overview/${visitId}`);
+export const getIntakeSessions = () => get<IntakeSession[]>("/intake/sessions");
+export const uploadTemplate = (
+  file: Blob,
+  payload: { name?: string; description?: string; category?: string },
+  filename = "uploaded-form.pdf"
+) => {
+  const formData = new FormData();
+  formData.append("file", file, filename);
+  if (payload.name) formData.append("name", payload.name);
+  if (payload.description) formData.append("description", payload.description);
+  if (payload.category) formData.append("category", payload.category);
+  return postForm<UploadedTemplateResponse>("/intake/templates/upload", formData);
+};
 
 export const assignForm = (visitId: string, templateId: string, assignedBy: string) =>
   post("/intake/assign", { visit_id: visitId, template_id: templateId, assigned_by: assignedBy });

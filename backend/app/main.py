@@ -22,6 +22,7 @@ from app.routes import (
     visits,
     voice,
 )
+from app.services import store
 
 app = FastAPI(
     title="PrelimMD API",
@@ -75,6 +76,11 @@ app.include_router(scheduling.router,      prefix="/scheduling", tags=["Scheduli
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+@app.on_event("startup")
+def on_startup():
+    store.init_db()
+
+
 # ── Health check ─────────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["Health"])
@@ -90,5 +96,6 @@ def health_check():
         "twilio_configured": bool(
             settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_phone_number
         ),
+        "database_configured": bool(settings.database_url),
         "public_base_url": settings.resolved_public_base_url or None,
     }

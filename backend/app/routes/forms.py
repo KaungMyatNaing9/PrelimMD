@@ -99,9 +99,9 @@ def prefill_form(form_id: str, patient_id: str):
     if not schema:
         raise HTTPException(status_code=404, detail=f"Form {form_id} not found.")
     try:
-        return ai_engine.retrieve_and_diff(schema, patient_id)
+        return ai_engine.prefill_from_db(schema, patient_id)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Retrieval agent failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Prefill failed: {exc}")
 
 
 @router.post("/{form_id}/submit", response_model=CompletedForm)

@@ -700,6 +700,7 @@ def _intake_fields_for_visit(visit_id: str) -> list[MissingField]:
                     fields=template.fields,
                 ),
                 visit.patient_id,
+                visit_id=visit.visit_id,
             )
         if not prefilled:
             continue

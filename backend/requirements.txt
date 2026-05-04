@@ -6,6 +6,8 @@ pydantic>=2.7.0
 pydantic-settings>=2.2.0
 python-dotenv>=1.0.0
 python-multipart>=0.0.9   # required by FastAPI for UploadFile / form data
+sqlalchemy>=2.0.30
+psycopg[binary]>=3.1.19
 
 # ── AI / Agent brain ──────────────────────────────────────────────────────────
 openai>=1.30.0

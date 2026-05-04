@@ -38,6 +38,21 @@ class Patient(BaseModel):
         return f"{self.first_name} {self.last_name}"
 
 
+class CreatePatientRequest(BaseModel):
+    first_name: str
+    last_name: str
+    date_of_birth: str
+    gender: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    insurance_provider: Optional[str] = None
+    insurance_id: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # Scheduled Visit
 # ════════════════════════════════════════════════════════════════════════════
@@ -51,6 +66,16 @@ class ScheduledVisit(BaseModel):
     department: str
     reason: Optional[str] = None
     status: Literal["scheduled", "checked_in", "completed", "cancelled"] = "scheduled"
+    notes: Optional[str] = None
+
+
+class CreateVisitRequest(BaseModel):
+    patient_id: str
+    visit_date: str
+    visit_time: str
+    provider_name: str
+    department: str
+    reason: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -116,6 +141,12 @@ class AssignFormRequest(BaseModel):
     assigned_by: str            # staff_id
 
 
+class UploadTemplateResponse(BaseModel):
+    template: FormTemplate
+    parsed_schema: FormSchema
+    message: str
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # Prefilled / Completed Form
 # ════════════════════════════════════════════════════════════════════════════
@@ -126,6 +157,7 @@ class PrefilledField(BaseModel):
     source: Literal["ehr", "patient_call", "patient_kiosk"]
     confidence: float
     needs_review: bool = False
+    last_confirmed_at: Optional[str] = None
 
 
 class MissingField(BaseModel):
@@ -168,7 +200,10 @@ class CompletedFormField(BaseModel):
 class CompletedForm(BaseModel):
     form_id: str
     patient_id: str
+    visit_id: Optional[str] = None
+    template_id: Optional[str] = None
     fields: List[CompletedFormField]
+    created_at: Optional[str] = None
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -291,8 +326,49 @@ class CheckInField(BaseModel):
     required: bool
     prefilled_value: Optional[Any] = None
     source: Optional[str] = None        # "ehr" | "patient_call" | None
+    last_confirmed_at: Optional[str] = None
     needs_confirmation: bool = False
     is_missing: bool = False
+
+
+class ReusableFieldFact(BaseModel):
+    fact_id: str
+    patient_id: str
+    field_key: str
+    value: str
+    source: str
+    confidence: int = 95
+    last_confirmed_at: str
+
+
+class PatientMedication(BaseModel):
+    medication_id: str
+    patient_id: str
+    name: str
+    dosage: Optional[str] = None
+    frequency: Optional[str] = None
+    active: bool = True
+    last_confirmed_at: str
+
+
+class PatientAllergy(BaseModel):
+    allergy_id: str
+    patient_id: str
+    substance: str
+    reaction: Optional[str] = None
+    severity: Optional[str] = None
+    active: bool = True
+    last_confirmed_at: str
+
+
+class PatientCondition(BaseModel):
+    condition_id: str
+    patient_id: str
+    condition: str
+    status: Optional[str] = None
+    onset: Optional[str] = None
+    active: bool = True
+    last_confirmed_at: str
 
 
 class CheckInFormGroup(BaseModel):

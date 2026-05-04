@@ -1,7 +1,232 @@
 # PrelimMD — Project Memory & Decision Log
 
-This file records important decisions, changes, and context that aren't obvious from the code.
-Update this whenever a significant decision is made or direction changes.
+This file records decisions, repo-state changes, and context that are not obvious from a quick code scan.
+
+---
+
+## 2026-05-04 — Repo Status Refresh And Frontend Validation
+
+## 2026-05-04 — Workflow Correction For Staff Portal And Patient Check-In
+
+## 2026-05-04 — Staff Portal Rebuild And Hydration Fix
+
+## 2026-05-04 — DB-First Prefill And Historical Form Reuse
+
+## 2026-05-04 — Normalized Reusable History And Patient Check-In Flow Upgrade
+
+### What changed
+
+- Added normalized reusable clinical tables:
+  - `patient_medications`
+  - `patient_allergies`
+  - `patient_conditions`
+  - `reusable_field_facts`
+- Prefill now carries `last_confirmed_at` metadata so patient check-in can show when a value came from prior confirmation.
+- Patient check-in flow was rebuilt to:
+  - merge duplicate fields across multiple assigned forms
+  - show all remaining fields, not just a partial subset
+  - allow inline edit completion with Enter or Done
+  - add per-question speaker buttons
+  - add per-question microphone dictation
+  - add a guided voice-fill mode for sequential conversation-style completion
+  - show a final merged review before signature
+- Staff portal now auto-refreshes on interval/focus for dashboard and visit views so checked-in status is visible without manual reload.
+
+### Validation
+
+- `backend/app`: compile passed
+- `frontend/patient-checkin`: lint passed
+- `frontend/patient-checkin`: build passed
+- `frontend/staff-portal`: lint passed
+- `frontend/staff-portal`: build passed
+
+### What changed
+
+- Replaced the old mock-FHIR-first prefill behavior with a DB-first deterministic prefill path.
+- Prefill now searches, in order:
+  - prior completed forms for the patient
+  - prior intake session answers for the patient
+  - current patient record in Postgres
+  - current visit record in Postgres
+  - optional mock clinical data only as fallback
+- Added alias and label heuristics so uploaded/custom forms can still map fields like:
+  - `sex` -> `gender`
+  - `member id / policy number` -> `insurance_id`
+  - `emergency phone` -> `emergency_contact_phone`
+- Added a durable `completed_forms` table and store helpers so completed intake data survives backend restarts.
+- Patient kiosk completion now writes completed form snapshots to the database and updates assignment status to `signed`.
+- Historical completed forms are now reused on future visits so returning patients can often just validate and sign.
+
+### Decisions made
+
+- Stop treating mock FHIR/OpenMRS data as the primary source of truth for intake prefill.
+- Use the app’s own Postgres data as the canonical prefill base.
+- Treat prior patient-confirmed intake data as valuable history, especially for:
+  - demographics
+  - insurance
+  - emergency contact
+  - allergies
+  - medications
+
+### Validation
+
+- `python3 -m compileall backend/app` passed
+
+### What remains unfinished
+
+- Medications, allergies, and conditions are still stored as reusable completed-form history, not yet as fully normalized clinical tables.
+- There is still no recency/expiration policy for patient-confirmed facts, so the UI should eventually distinguish:
+  - recently confirmed
+  - older historical data that should be revalidated
+
+### What changed
+
+- Rebuilt `frontend/staff-portal` around a single consistent Tailwind-based app shell.
+- Fixed the Next.js hydration/runtime break by removing nested route layouts that incorrectly rendered their own `<html><body>` trees under:
+  - `src/app/patients/layout.tsx`
+  - `src/app/visits/layout.tsx`
+  - `src/app/followups/layout.tsx`
+- Replaced the mixed old/new portal pages with DB-backed pages for:
+  - dashboard
+  - patients
+  - visits
+  - visit workspace
+  - call schedule
+  - forms library
+  - risk alerts
+  - follow-up queue/detail
+- Added intake session fetching to the frontend API layer with `GET /intake/sessions`.
+- Kept the patient check-in launcher and visit workflow integrated with the existing backend/Postgres flow.
+
+### Decisions made
+
+- Prefer one stable staff portal IA over partial nurse/doctor sub-apps:
+  - nurse setup and intake prep live in dashboard/patients/visits/calls/forms-library
+  - doctor review and post-visit follow-up live in risk-alerts/followups
+- Use backend and DB data for portal content instead of hardcoded sample rows.
+- Keep department-based form suggestions derived from stored template categories, not fixed template names.
+
+### Validation
+
+- `frontend/staff-portal`: `npm run lint` passed
+- `frontend/staff-portal`: `npm run build` passed
+- The staff portal route set now builds cleanly with:
+  - `/`
+  - `/patients`
+  - `/visits`
+  - `/visits/[id]`
+  - `/calls`
+  - `/forms-library`
+  - `/risk-alerts`
+  - `/followups`
+  - `/followups/[id]`
+
+### What remains unfinished
+
+- The visit workspace still does not let staff edit visit department/provider after creation because there is no backend update route yet.
+- Risk alert severity is still derived from stored follow-up flags; richer doctor analytics still need backend support.
+- Intake session transcript review and follow-up response review are still separate follow-on tasks.
+
+### What changed
+
+- Corrected the intended product workflow in code and repo docs:
+  - staff portal is now the nurse/doctor intake setup workspace
+  - patient check-in is now the patient validation/review/consent workspace
+- Added staff-side backend workflow support:
+  - `POST /patients` to create patient records
+  - `POST /visits` to create scheduled visits
+  - `POST /intake/templates/upload` to upload or scan a PDF/image into a reusable form template stored in the database
+- Updated the staff portal to support:
+  - a dedicated scheduled visits tab
+  - patient creation and visit scheduling from the patients tab
+  - visit-level template assignment
+  - visit-level PDF/photo/camera upload to create and assign new templates
+  - automatic AI prefill immediately after assignment/upload
+  - AI intake call scheduling from the visit workspace
+- Updated patient check-in to:
+  - remove the camera scan workflow from the patient side
+  - focus on verification, prefilled review, missing fields, and consent
+  - add a simple read-aloud helper for remaining questions
+- Replaced both portal placeholder brand marks with `frontend/images/logo.png`
+
+### Decisions made
+
+- The camera/photo form capture belongs to staff intake preparation, not the patient kiosk.
+- The nurse workflow should be visit-centric:
+  - schedule patient
+  - assign/upload form
+  - run prefill
+  - schedule AI call
+  - send patient to self check-in
+- Patient check-in should not ask patients to digitize clinic paperwork if staff can do that earlier in the workflow.
+- For the quick accessibility improvement, use browser speech synthesis in the patient portal instead of waiting for a full voice-agent form entry implementation.
+
+### Validation
+
+- Backend compile: passed
+- Staff portal lint: passed
+- Staff portal build: passed
+- Patient check-in lint: passed
+- Patient check-in build: passed
+
+### What remains unfinished
+
+- Persist the AI engine’s parsed/prefilled/completed form caches in Postgres instead of process memory
+- Add a proper staff-facing transcript/session review screen
+- Add patient-side voice input, not just read-aloud assistance
+- Add auth/roles
+- Add Alembic migrations for managed schema evolution
+
+### What changed
+
+- Updated `MEMORY.md`, `SYSTEM_STATE.md`, and `TASKS.md` so they match the current codebase instead of the earlier placeholder/frontend-not-started state.
+- Verified the FastAPI backend imports successfully from `backend/venv` and compiles with:
+  - `venv/bin/python -c "from app.main import app; print(app.version)"`
+  - `venv/bin/python -m compileall app`
+- Installed frontend dependencies locally and ran TypeScript checks for both Next.js apps.
+- Fixed a real patient check-in frontend type mismatch:
+  - `frontend/patient-checkin/src/app/checkin/[visit_id]/page.tsx`
+  - Replaced `field.needs_review` with `field.needs_confirmation` to match the backend/API model.
+- Removed `next/font/google` usage from both frontend layouts and replaced it with local CSS font stacks.
+- Added committed `.eslintrc.json` files for both frontend apps.
+- Made the staff portal kiosk launch URL configurable with `NEXT_PUBLIC_PATIENT_CHECKIN_URL`.
+
+### What was learned
+
+- The repo now has two actual frontend apps, not placeholders:
+  - `frontend/patient-checkin` has welcome, verify, new-patient, check-in, and complete flows.
+  - `frontend/staff-portal` has dashboard, patient roster, visit detail, follow-up queue, and follow-up detail pages.
+- The current local backend virtualenv path is `backend/venv`, not `backend/.venv`.
+- Both frontends default to `NEXT_PUBLIC_API_URL=http://localhost:8000` if no `.env.local` is present.
+- The staff portal now defaults the kiosk launch URL to `http://localhost:3001` but can override it with `NEXT_PUBLIC_PATIENT_CHECKIN_URL`.
+
+### Validation results
+
+- Backend import/compile: passed
+- `npx tsc --noEmit`:
+  - `frontend/patient-checkin`: passed after the `needs_confirmation` fix
+  - `frontend/staff-portal`: passed
+- `npm run lint`:
+  - `frontend/patient-checkin`: passed
+  - `frontend/staff-portal`: passed
+- `npm run build`:
+  - `frontend/patient-checkin`: passed
+  - `frontend/staff-portal`: passed
+
+### Decisions made
+
+- Use the codebase as the source of truth for progress tracking, not the older planning docs.
+- Prefer local/system font stacks for these frontends so builds do not depend on external font fetches.
+- Keep a committed ESLint config in each frontend app so `next lint` is CI-safe and non-interactive.
+
+### What remains unfinished
+
+- Surface more backend data in the UI:
+  - intake session review
+  - follow-up responses
+  - report/clinical brief review
+- Add auth, persistence, and real FHIR/EHR integration.
+- Rotate/remove live secrets from `backend/.env` and keep only safe examples in tracked docs/files.
 
 ---
 
@@ -9,189 +234,95 @@ Update this whenever a significant decision is made or direction changes.
 
 ### What changed
 
-**Product pivot:**
-- Old framing: "conversational AI voice/video agent for appointment access"
-- New framing: AI-assisted patient intake, self check-in, and post-discharge follow-up platform
-- Two future frontend experiences: Staff Portal (nurses/doctors) and Patient Self Check-In (kiosk)
+- Product framing moved from generic conversational access tooling to:
+  - AI-assisted patient intake
+  - self check-in
+  - post-discharge follow-up
+- Backend architecture was reorganized around:
+  - `store.py`
+  - `interview_engine.py`
+  - `patients.py`
+  - `visits.py`
+  - `intake.py`
+  - `followups.py`
+  - `patient_checkin.py`
+- Root docs were introduced:
+  - `TASKS.md`
+  - `SYSTEM_STATE.md`
+  - `MEMORY.md`
 
-**Files deleted:**
-- `shared/types/interview.schema.json` — unused JSON schema file, never imported by Python or JS code
+### Key decisions
 
-**Files created:**
-- `backend/app/services/store.py` — central in-memory mock data store (replaces scattered in-memory dicts)
-- `backend/app/services/interview_engine.py` — reusable session orchestration for both intake and follow-up
-- `backend/app/services/tts_service.py` — ElevenLabs TTS abstraction with graceful fallback to text
-- `backend/app/routes/patients.py` — patient lookup
-- `backend/app/routes/visits.py` — scheduled visit lookup
-- `backend/app/routes/intake.py` — staff intake workflow (assign, prefill, schedule)
-- `backend/app/routes/followups.py` — post-discharge follow-up management
-- `backend/app/routes/patient_checkin.py` — kiosk self check-in flow
-- `frontend/staff-portal/README.md` — placeholder spec for Staff Portal
-- `frontend/patient-checkin/README.md` — placeholder spec for Patient Check-In
-- `TASKS.md`, `SYSTEM_STATE.md`, `MEMORY.md`
+- Keep MVP state in-memory until persistence becomes the immediate bottleneck.
+- Preserve compatibility routes instead of deleting them when possible.
+- Keep safety rules embedded in the interview engine so patient-facing flows do not drift.
 
-**Files modified:**
-- `backend/app/main.py` — added CORS middleware, registered all new routers
-- `backend/app/config.py` — added `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ALLOWED_ORIGINS`, `cors_origins` property
-- `backend/app/models/schemas.py` — full rewrite adding: `Patient`, `ScheduledVisit`, `StaffUser`, `FormTemplate`, `AssignedForm`, `IntakeCallSession`, `SessionTurn`, `PostDischargeFollowUpTask`, `FollowUpQuestion`, `FollowUpResponse`, all check-in models, voice models; legacy models kept
-- `backend/app/routes/interview.py` — implemented (was empty TODO stubs)
-- `backend/app/routes/voice.py` — added `/voice/synthesize`, `/voice/intake/start`, `/voice/intake/answer`, `/voice/followup/start`, `/voice/followup/answer`
-- `backend/app/routes/scheduling.py` — repurposed; now returns 410 Gone with redirect to `/followups`
-- `backend/.env.example` — updated to include all variables
-- `backend/requirements.txt` — added `elevenlabs`, `httpx`
-- `README.md` — full rewrite
+### What remained unfinished at that point
 
-### Why decisions were made
-
-**In-memory store instead of SQLite:**
-The existing `ai_engine.py` already used in-memory dicts. Adding SQLite would require SQLAlchemy, migrations, and more setup. Since we're at MVP stage with no persistence requirement yet, centralizing all mock data in `store.py` is a better intermediate step. When ready, the store functions can be swapped out for real DB calls without changing the routes.
-
-**ElevenLabs as TTS abstraction:**
-The `.env.example` already had `ELEVENLABS_API_KEY` from a previous setup. ElevenLabs was the intended provider. The service is designed to fail gracefully (returns `None` → text fallback) so the backend never crashes if the key is missing.
-
-**`/scheduling` → 410 Gone instead of deletion:**
-Deleted the stubs but kept the router file and prefix to avoid breaking any existing clients or postman collections. The 410 response explains where to go.
-
-**Safety rules in interview_engine.py:**
-Hard-coded as system prompt instructions. These cannot be overridden by user input since they're applied at every LLM call within the engine. If a patient asks for medical advice, the model is instructed to redirect — not answer.
-
-### What remains unfinished
-
-- Database (all state is in-memory, lost on restart)
-- Real FHIR/EHR API calls (currently mock data in `fhir_service.py`)
-- Auth middleware (JWT/API key)
-- Outbound calling (Twilio/ElevenLabs dial)
-- Both frontend UIs
-- ElevenLabs TTS real-key testing
+- Database
+- Real FHIR/EHR integration
+- Auth
+- Production-grade frontend apps
 
 ---
 
-## 2026-05-02 — Twilio + ElevenLabs voice-call MVP
+## 2026-05-02 — Twilio + ElevenLabs Voice-Call MVP
 
 ### What changed
 
-**Files modified:**
-- `backend/app/routes/voice.py`
-- `backend/app/services/store.py`
-- `backend/app/models/schemas.py`
-- `backend/app/config.py`
-- `backend/app/main.py`
-- `backend/.env.example`
-- `README.md`
-- `TASKS.md`
-- `SYSTEM_STATE.md`
-- `MEMORY.md`
+- Added Twilio-compatible intake and follow-up voice routes returning TwiML.
+- Added outbound call trigger support.
+- Added ElevenLabs audio generation with `/static/tts/...` playback fallback behavior.
+- Added `VoiceCallSession` state keyed by `CallSid`.
 
-**Voice endpoints now return TwiML for phone calls:**
-- `GET|POST /voice/intake/start` starts or attaches to an intake session and returns TwiML with a speech `<Gather>`
-- `POST /voice/intake/answer` consumes Twilio `SpeechResult`, stores answers, advances the intake flow, and returns the next TwiML
-- `GET|POST /voice/followup/start` starts or attaches to a follow-up session and returns TwiML
-- `POST /voice/followup/answer` stores doctor-selected follow-up answers and flags concerning responses
-- `POST /voice/call/start` optionally queues an outbound Twilio call if Twilio credentials are configured
-- `GET /voice/test-twiml` returns sample XML for quick verification
+### Key decisions
 
-**ElevenLabs fallback behavior:**
-- If `ELEVENLABS_API_KEY` and `PUBLIC_BASE_URL` are available, TTS audio is written to `backend/static/tts/` and Twilio receives `<Play>` URLs
-- If ElevenLabs is missing, fails, or there is no public base URL, the system falls back to Twilio `<Say>`
+- Keep telephony control deterministic inside `routes/voice.py`.
+- Reuse the existing in-memory store pattern for telephony state.
+- Serve synthesized audio directly from FastAPI static files.
 
-**CallSid mapping:**
-- Added `VoiceCallSession` state in `store.py`
-- Each Twilio `CallSid` maps to:
-  - `session_id`
-  - `mode` (`intake` or `followup`)
-  - `patient_id`
-  - `visit_id` or `task_id`
-  - verification state and attempt counters
-  - current question index
-  - retry/unclear/clarification counters
-  - completion status/reason
+### What remained unfinished at that point
 
-### Decisions made
-
-**Deterministic Twilio loop instead of LLM-driven call control:**
-- The existing `interview_engine.py` is still used to create intake/follow-up sessions
-- Actual Twilio phone progression is handled deterministically inside `routes/voice.py`
-- Reason: the phone-call loop needs reliable verification, retries, hangups, and Twilio form handling even when LLM output is unavailable or too loose for telephony control flow
-
-**Keep storage consistent with current MVP:**
-- The repo still uses the existing mock/in-memory store pattern
-- Added a small `VoiceCallSession` collection in `store.py` rather than introducing a new database layer
-
-**Static audio served from FastAPI:**
-- `main.py` now mounts `/static`
-- This keeps ElevenLabs output accessible to Twilio over ngrok/public HTTPS without adding a separate storage service
-
-### What remains unfinished
-
-- End-to-end live Twilio verification through ngrok still needs a real phone call test
-- DOB parsing is practical but limited to common numeric and month-name phrases
-- Call/session state is still in-memory and resets on server restart
-- `POST /intake/schedule-call` and `POST /followups/schedule` do not yet auto-trigger outbound dialing
+- Live end-to-end Twilio verification
+- Stronger DOB parsing
+- Persistence across restarts
+- Automatic dial launch from staff scheduling actions
 
 ---
 
-## 2026-05-02 — Local Streamlit voice call tester
+## 2026-05-02 — Local Streamlit Voice Call Tester
 
 ### What changed
 
-**Files modified:**
-- `backend/tools/voice_call_tester.py`
-- `backend/requirements.txt`
-- `README.md`
-- `TASKS.md`
-- `SYSTEM_STATE.md`
-- `MEMORY.md`
+- Added `backend/tools/voice_call_tester.py`.
+- Added a local Twilio-style simulation path for the current `/voice/*` routes.
 
-**Tester behavior:**
-- Added a local Streamlit developer dashboard at `backend/tools/voice_call_tester.py`
-- The tool simulates Twilio by POSTing form data to:
-  - `/voice/intake/start`
-  - `/voice/intake/answer`
-  - `/voice/followup/start`
-  - `/voice/followup/answer`
-- It sends fake `CallSid`, `From`, `To`, `SpeechResult`, and `Confidence` fields
-- It parses TwiML to extract:
-  - `<Say>` text
-  - `<Play>` URL
-  - `<Gather action>`
-  - `<Redirect>`
-  - `<Hangup>`
-- It keeps local conversation history and can optionally inspect `GET /interview/session/{session_id}`
+### Key decisions
 
-### Decisions made
+- Test the production-style voice webhooks directly rather than inventing a second test-only flow.
+- Keep the tool lightweight and local to the backend developer workflow.
 
-**No backend call-flow changes for the tester:**
-- The tester consumes the existing production Twilio-style endpoints as-is
-- Reason: the goal is to validate the current webhook/TwiML loop, not create a second voice implementation
+### What remained unfinished at that point
 
-**Streamlit instead of a browser frontend app:**
-- The tester is a single local Python file with no production routing implications
-- Reason: this keeps the tool fast to run for backend developers and avoids introducing a real frontend stack
-
-**`requests` + XML parsing only:**
-- The tester uses `requests` and `xml.etree.ElementTree`
-- Reason: minimal dependencies and direct visibility into the raw TwiML returned by the backend
-
-### What remains unfinished
-
-- The tester still depends on a locally running FastAPI backend with the relevant mock/prepared data
-- If a call is started from `visit_id` or `followup_id` instead of a known `session_id`, session inspection depends on the developer already knowing which session to inspect
-- Live manual verification in Streamlit still needs to be run in the project virtualenv
+- Manual validation still depends on a running backend and realistic seeded data.
+- Real live-call verification still needs Twilio/ngrok.
 
 ---
 
-## Template for future entries
+## Template For Future Entries
 
-```
-## YYYY-MM-DD — [Short title]
+```md
+## YYYY-MM-DD — Short Title
 
 ### What changed
-- File X was created/modified/deleted
-- Why: [reason]
+- File/feature changes
+
+### What was learned
+- Repo or behavior observations
 
 ### Decisions made
-- [Decision]: [rationale]
+- Chosen approach and rationale
 
 ### What remains unfinished
-- [items]
+- Open work and blockers
 ```

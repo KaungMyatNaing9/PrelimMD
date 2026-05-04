@@ -7,7 +7,7 @@ import json
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Any, Dict, Iterable, Optional
 
 from openai import OpenAI
 
@@ -54,6 +54,384 @@ _form_schemas: Dict[str, FormSchema] = {}
 _prefilled_forms: Dict[str, PrefilledForm] = {}
 _completed_forms: Dict[str, CompletedForm] = {}
 _clinical_briefs: Dict[str, ClinicalBrief] = {}
+
+_FHIR_TO_CANONICAL = {
+    "Patient.name": "full_name",
+    "Patient.birthDate": "date_of_birth",
+    "Patient.gender": "gender",
+    "Patient.telecom.phone": "phone",
+    "Patient.telecom.email": "email",
+    "Patient.address": "address",
+    "Patient.contact.name": "emergency_contact_name",
+    "Patient.contact.telecom": "emergency_contact_phone",
+    "Patient.contact.relationship": "emergency_contact_relation",
+    "Coverage.payor": "insurance_provider",
+    "Coverage.identifier": "insurance_id",
+    "AllergyIntolerance": "known_allergies",
+    "MedicationRequest": "current_medications",
+    "Condition": "conditions",
+}
+
+_ALIAS_TO_CANONICAL = {
+    "fullname": "full_name",
+    "patientname": "full_name",
+    "legalname": "full_name",
+    "name": "full_name",
+    "dateofbirth": "date_of_birth",
+    "dob": "date_of_birth",
+    "birthdate": "date_of_birth",
+    "gender": "gender",
+    "sex": "gender",
+    "phonenumber": "phone",
+    "phone": "phone",
+    "mobile": "phone",
+    "cellphone": "phone",
+    "bestcontactnumber": "phone",
+    "email": "email",
+    "emailaddress": "email",
+    "address": "address",
+    "homeaddress": "address",
+    "mailingaddress": "address",
+    "insuranceprovider": "insurance_provider",
+    "insurancecompany": "insurance_provider",
+    "payor": "insurance_provider",
+    "memberid": "insurance_id",
+    "policynumber": "insurance_id",
+    "insuranceid": "insurance_id",
+    "subscriberid": "insurance_id",
+    "emergencycontact": "emergency_contact_name",
+    "emergencycontactname": "emergency_contact_name",
+    "emergencycontactphone": "emergency_contact_phone",
+    "emergencyphone": "emergency_contact_phone",
+    "relationshiptopatient": "emergency_contact_relation",
+    "relationtopatient": "emergency_contact_relation",
+    "relationship": "emergency_contact_relation",
+    "reasonforvisit": "reason_for_visit",
+    "chiefcomplaint": "reason_for_visit",
+    "visitreason": "reason_for_visit",
+    "currentmedications": "current_medications",
+    "medications": "current_medications",
+    "medicationreview": "current_medications",
+    "knownallergies": "known_allergies",
+    "allergies": "known_allergies",
+    "drugallergies": "known_allergies",
+    "cardiachistory": "conditions",
+    "medicalhistory": "conditions",
+    "conditions": "conditions",
+    "patientsignature": "consent_signature",
+    "signature": "consent_signature",
+    "consentsignature": "consent_signature",
+    "datesigned": "consent_date",
+    "signingdate": "consent_date",
+    "consentdate": "consent_date",
+    "providername": "provider_name",
+    "department": "department",
+}
+
+_QUESTION_TEMPLATES = {
+    "full_name": "Could you confirm your full name?",
+    "date_of_birth": "What is your date of birth?",
+    "gender": "What is your gender?",
+    "phone": "What is your phone number?",
+    "email": "What is your email address?",
+    "address": "What is your home address?",
+    "insurance_provider": "Who is your insurance provider?",
+    "insurance_id": "What is your insurance member ID or policy number?",
+    "emergency_contact_name": "What is the name of your emergency contact?",
+    "emergency_contact_phone": "What is the phone number of your emergency contact?",
+    "emergency_contact_relation": "What is the relationship of your emergency contact to you?",
+    "reason_for_visit": "What is the reason for your visit today?",
+    "current_medications": "Are you currently taking any medications?",
+    "known_allergies": "Do you have any known allergies?",
+}
+
+
+def _normalize_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _format_list(values: Iterable[str]) -> Optional[str]:
+    cleaned = [str(value).strip() for value in values if str(value).strip()]
+    if not cleaned:
+        return None
+    return ", ".join(cleaned)
+
+
+def _session_sort_key(session) -> str:
+    return session.completed_at or session.created_at or ""
+
+
+def _prior_patient_answers(patient_id: str, visit_id: Optional[str] = None) -> dict[str, Any]:
+    from app.services import store as _store
+
+    sessions = sorted(
+        _store.get_sessions_for_patient(patient_id, session_type="intake"),
+        key=_session_sort_key,
+    )
+    merged: dict[str, Any] = {}
+    for session in sessions:
+        if visit_id and session.visit_id == visit_id:
+            continue
+        if session.status not in {"completed", "in_progress"}:
+            continue
+        for key, value in session.collected_answers.items():
+            if value not in (None, "", [], {}):
+                merged[key] = value
+    return merged
+
+
+def _historical_completed_values(patient_id: str, visit_id: Optional[str] = None) -> dict[str, Any]:
+    from app.services import store as _store
+
+    completed_forms = _store.get_completed_forms_for_patient(patient_id)
+    merged: dict[str, Any] = {}
+    for completed in completed_forms:
+        if visit_id and completed.visit_id == visit_id:
+            continue
+        for field in completed.fields:
+            if field.value in (None, "", [], {}):
+                continue
+            normalized_id = _normalize_key(field.field_id)
+            canonical_key = _ALIAS_TO_CANONICAL.get(normalized_id, field.field_id)
+            merged.setdefault(canonical_key, field.value)
+    return merged
+
+
+def _reusable_field_fact_values(patient_id: str) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    from app.services import store as _store
+
+    values: dict[str, Any] = {}
+    metadata: dict[str, dict[str, Any]] = {}
+    for fact in _store.get_reusable_field_facts(patient_id):
+        values.setdefault(fact.field_key, fact.value)
+        metadata.setdefault(
+            fact.field_key,
+            {
+                "source": fact.source,
+                "last_confirmed_at": fact.last_confirmed_at,
+                "confidence": fact.confidence / 100,
+            },
+        )
+    return values, metadata
+
+
+def _clinical_history_values(patient_id: str) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    from app.services import store as _store
+
+    metadata: dict[str, dict[str, Any]] = {}
+    medications = _store.get_patient_medications(patient_id)
+    allergies = _store.get_patient_allergies(patient_id)
+    conditions = _store.get_patient_conditions(patient_id)
+
+    values = {
+        "current_medications": _format_list(
+            f"{item.name} {item.dosage or ''}".strip() for item in medications
+        ),
+        "known_allergies": _format_list(item.substance for item in allergies),
+        "conditions": _format_list(item.condition for item in conditions),
+    }
+
+    if medications:
+        metadata["current_medications"] = {
+            "source": "patient_kiosk",
+            "last_confirmed_at": medications[0].last_confirmed_at,
+            "confidence": 0.9,
+        }
+    if allergies:
+        metadata["known_allergies"] = {
+            "source": "patient_kiosk",
+            "last_confirmed_at": allergies[0].last_confirmed_at,
+            "confidence": 0.9,
+        }
+    if conditions:
+        metadata["conditions"] = {
+            "source": "patient_kiosk",
+            "last_confirmed_at": conditions[0].last_confirmed_at,
+            "confidence": 0.9,
+        }
+
+    return {key: value for key, value in values.items() if value}, metadata
+
+
+def _build_prefill_context(patient_id: str, visit_id: Optional[str] = None) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    from app.services import store as _store
+
+    patient = _store.get_patient(patient_id)
+    visit = _store.get_visit(visit_id) if visit_id else None
+    previous_answers = _prior_patient_answers(patient_id, visit_id=visit_id)
+    historical_values = _historical_completed_values(patient_id, visit_id=visit_id)
+    fact_values, fact_meta = _reusable_field_fact_values(patient_id)
+    clinical_values, clinical_meta = _clinical_history_values(patient_id)
+    mock_ehr = fhir_service.get_all(patient_id)
+
+    known: dict[str, Any] = {}
+    metadata: dict[str, dict[str, Any]] = {}
+
+    if fact_values:
+        known.update(fact_values)
+        metadata.update(fact_meta)
+
+    if clinical_values:
+        known.update(clinical_values)
+        metadata.update(clinical_meta)
+
+    if historical_values:
+        for key, value in historical_values.items():
+            known.setdefault(key, value)
+
+    if previous_answers:
+        known.update(previous_answers)
+
+    if patient:
+        full_name = f"{patient.first_name} {patient.last_name}".strip()
+        known.update({
+            "full_name": full_name,
+            "date_of_birth": patient.date_of_birth,
+            "gender": patient.gender,
+            "phone": patient.phone,
+            "email": patient.email,
+            "address": patient.address,
+            "insurance_provider": patient.insurance_provider,
+            "insurance_id": patient.insurance_id,
+            "emergency_contact_name": patient.emergency_contact_name,
+            "emergency_contact_phone": patient.emergency_contact_phone,
+            "emergency_contact_relation": patient.emergency_contact_relation,
+            "consent_signature": full_name,
+        })
+        patient_confirmed = previous_answers.get("consent_date")
+        for key in (
+            "full_name",
+            "date_of_birth",
+            "gender",
+            "phone",
+            "email",
+            "address",
+            "insurance_provider",
+            "insurance_id",
+            "emergency_contact_name",
+            "emergency_contact_phone",
+            "emergency_contact_relation",
+        ):
+            metadata.setdefault(
+                key,
+                {
+                    "source": "ehr",
+                    "last_confirmed_at": patient_confirmed,
+                    "confidence": 0.96,
+                },
+            )
+
+    if visit:
+        known.update({
+            "reason_for_visit": visit.reason,
+            "provider_name": visit.provider_name,
+            "department": visit.department,
+        })
+        if visit.reason:
+            metadata.setdefault("reason_for_visit", {"source": "patient_kiosk", "last_confirmed_at": None, "confidence": 0.9})
+
+    ehr_patient = mock_ehr.get("patient") or {}
+    if ehr_patient:
+        for key, source_key in (
+            ("full_name", "name"),
+            ("date_of_birth", "dob"),
+            ("gender", "gender"),
+            ("phone", "phone"),
+            ("email", "email"),
+            ("address", "address"),
+            ("insurance_provider", "insurance_provider"),
+            ("insurance_id", "insurance_id"),
+            ("emergency_contact_name", "emergency_contact_name"),
+            ("emergency_contact_phone", "emergency_contact_phone"),
+            ("emergency_contact_relation", "emergency_contact_relation"),
+        ):
+            if key not in known and ehr_patient.get(source_key) not in (None, ""):
+                known[key] = ehr_patient.get(source_key)
+                metadata.setdefault(key, {"source": "ehr", "last_confirmed_at": None, "confidence": 0.9})
+
+    if "current_medications" not in known:
+        value = _format_list(
+            f"{item.get('name', '').strip()} {item.get('dosage', '').strip()}".strip()
+            for item in mock_ehr.get("medications", [])
+        )
+        if value:
+            known["current_medications"] = value
+            metadata.setdefault("current_medications", {"source": "ehr", "last_confirmed_at": None, "confidence": 0.88})
+    if "known_allergies" not in known:
+        value = _format_list(item.get("substance", "") for item in mock_ehr.get("allergies", []))
+        if value:
+            known["known_allergies"] = value
+            metadata.setdefault("known_allergies", {"source": "ehr", "last_confirmed_at": None, "confidence": 0.88})
+    if "conditions" not in known:
+        value = _format_list(item.get("condition", "") for item in mock_ehr.get("conditions", []))
+        if value:
+            known["conditions"] = value
+            metadata.setdefault("conditions", {"source": "ehr", "last_confirmed_at": None, "confidence": 0.88})
+    known["consent_date"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    metadata.setdefault("consent_date", {"source": "ehr", "last_confirmed_at": None, "confidence": 1.0})
+
+    return (
+        {key: value for key, value in known.items() if value not in (None, "", [], {})},
+        metadata,
+    )
+
+
+def _canonical_field_key(field: FormField) -> str:
+    label_lower = field.label.lower()
+    if field.field_id in _FHIR_TO_CANONICAL.values():
+        return field.field_id
+
+    if field.fhir_mapping and field.fhir_mapping in _FHIR_TO_CANONICAL:
+        return _FHIR_TO_CANONICAL[field.fhir_mapping]
+
+    normalized_field_id = _normalize_key(field.field_id)
+    if normalized_field_id in _ALIAS_TO_CANONICAL:
+        return _ALIAS_TO_CANONICAL[normalized_field_id]
+
+    normalized_label = _normalize_key(field.label)
+    if normalized_label in _ALIAS_TO_CANONICAL:
+        return _ALIAS_TO_CANONICAL[normalized_label]
+
+    if "date of birth" in label_lower or re.search(r"\bdob\b", label_lower):
+        return "date_of_birth"
+    if "gender" in label_lower or re.search(r"\bsex\b", label_lower):
+        return "gender"
+    if "emergency" in label_lower and "phone" in label_lower:
+        return "emergency_contact_phone"
+    if "emergency" in label_lower and ("relation" in label_lower or "relationship" in label_lower):
+        return "emergency_contact_relation"
+    if "emergency" in label_lower and "contact" in label_lower:
+        return "emergency_contact_name"
+    if "insurance" in label_lower and any(term in label_lower for term in ("member id", "policy", "subscriber id")):
+        return "insurance_id"
+    if "insurance" in label_lower and any(term in label_lower for term in ("provider", "company", "payor")):
+        return "insurance_provider"
+    if "reason" in label_lower and "visit" in label_lower:
+        return "reason_for_visit"
+    if "allerg" in label_lower:
+        return "known_allergies"
+    if "medication" in label_lower:
+        return "current_medications"
+    if "address" in label_lower:
+        return "address"
+    if "email" in label_lower:
+        return "email"
+    if "phone" in label_lower or "mobile" in label_lower:
+        return "phone"
+
+    if field.type == "signature":
+        return "consent_signature"
+    if field.type == "date" and "sign" in normalized_label:
+        return "consent_date"
+
+    return field.field_id
+
+
+def _question_for_field(field: FormField, canonical_key: str) -> str:
+    return _QUESTION_TEMPLATES.get(
+        canonical_key,
+        f"Could you please provide your {field.label.lower()}?",
+    )
 
 
 # ── Agent 1: Form parser ──────────────────────────────────────────────────────
@@ -212,154 +590,54 @@ def _run_retrieval_tools(name: str, args: dict) -> str:
 
 def retrieve_and_diff(form_schema: FormSchema, patient_id: str) -> PrefilledForm:
     """
-    Agent 2 — tool-calling agent that queries the EHR and diffs against the form.
-    The LLM decides which tools to call; filled fields come from EHR tool results;
-    missing fields get a conversational question generated by the agent.
+    Backward-compatible entrypoint for prefill.
+    The system now prefers deterministic DB-first prefill over the earlier mock-EHR tool loop.
     """
-    fields_payload = [
-        {
-            "field_id": f.field_id,
-            "label": f.label,
-            "type": f.type,
-            "required": f.required,
-            "fhir_mapping": f.fhir_mapping,
-        }
-        for f in form_schema.fields
-    ]
-
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    messages: list[dict] = [
-        {"role": "system", "content": _RETRIEVAL_SYSTEM},
-        {
-            "role": "user",
-            "content": (
-                f"Patient ID: {patient_id}\n"
-                f"Today's date: {today}\n\n"
-                f"Form fields to fill:\n{json.dumps(fields_payload, indent=2)}"
-            ),
-        },
-    ]
-
-    client = _client()
-
-    # Agentic loop — runs until the model stops calling tools
-    while True:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            tools=_RETRIEVAL_TOOLS,
-            temperature=0,
-        )
-        choice = response.choices[0]
-        messages.append(choice.message)
-
-        if choice.finish_reason != "tool_calls":
-            break
-
-        for tc in choice.message.tool_calls:
-            args = json.loads(tc.function.arguments)
-            result = _run_retrieval_tools(tc.function.name, args)
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": result,
-            })
-
-    raw = choice.message.content.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-
-    agent_result = json.loads(raw)
-
-    field_lookup = {f.field_id: f for f in form_schema.fields}
-    filled = [
-        PrefilledField(field_id=f["field_id"], value=f["value"], source="ehr", confidence=0.95)
-        for f in agent_result.get("filled", [])
-        if f.get("value") is not None
-    ]
-    missing = [
-        MissingField(
-            field_id=f["field_id"],
-            label=f["label"],
-            question=f["question"],
-            type=field_lookup[f["field_id"]].type if f["field_id"] in field_lookup else "string",
-            required=field_lookup[f["field_id"]].required if f["field_id"] in field_lookup else False,
-        )
-        for f in agent_result.get("missing", [])
-    ]
-
-    questions = _group_into_questions(missing)
-
-    prefilled = PrefilledForm(
-        form_id=form_schema.form_id,
-        patient_id=patient_id,
-        filled_fields=filled,
-        missing_fields=missing,
-        questions=questions,
-        stats=FormStats(
-            total=len(form_schema.fields),
-            filled=len(filled),
-            missing=len(missing),
-        ),
-    )
-    _prefilled_forms[form_schema.form_id] = prefilled
-    return prefilled
+    return prefill_from_db(form_schema, patient_id)
 
 
-def local_prefill(form_schema: "FormSchema", patient_id: str) -> "PrefilledForm":
+def prefill_from_db(form_schema: "FormSchema", patient_id: str, visit_id: Optional[str] = None) -> "PrefilledForm":
     """
-    Fallback prefill that uses patient data directly from the store — no OpenAI needed.
-    Called when OPENAI_API_KEY is not set or the LLM call fails.
+    Deterministic prefill that searches the app database first, then prior patient answers,
+    and finally any optional historical clinical sources.
     """
-    from app.services import store as _store
-    from datetime import date
+    context, context_meta = _build_prefill_context(patient_id, visit_id=visit_id)
 
-    patient = _store.get_patient(patient_id)
-
-    FIELD_MAP: dict = {}
-    if patient:
-        full_name = f"{patient.first_name} {patient.last_name}"
-        FIELD_MAP = {
-            "full_name": full_name,
-            "date_of_birth": patient.date_of_birth,
-            "gender": patient.gender,
-            "phone": patient.phone,
-            "email": patient.email,
-            "address": patient.address,
-            "insurance_provider": patient.insurance_provider,
-            "insurance_id": patient.insurance_id,
-            "emergency_contact_name": patient.emergency_contact_name,
-            "emergency_contact_phone": patient.emergency_contact_phone,
-            "emergency_contact_relation": patient.emergency_contact_relation,
-            "consent_signature": full_name,
-            "consent_date": date.today().isoformat(),
-        }
-        # remove None values
-        FIELD_MAP = {k: v for k, v in FIELD_MAP.items() if v is not None}
-
-    field_lookup = {f.field_id: f for f in form_schema.fields}
-    filled = []
-    missing = []
+    filled: list[PrefilledField] = []
+    missing: list[MissingField] = []
 
     for field in form_schema.fields:
-        val = FIELD_MAP.get(field.field_id)
+        canonical_key = _canonical_field_key(field)
+        val = context.get(canonical_key)
         if val is not None:
-            filled.append(PrefilledField(field_id=field.field_id, value=val, source="ehr", confidence=0.9))
+            meta = context_meta.get(canonical_key, {})
+            source = meta.get("source", "ehr" if canonical_key not in {"reason_for_visit", "current_medications", "known_allergies", "conditions"} else "patient_kiosk")
+            filled.append(
+                PrefilledField(
+                    field_id=field.field_id,
+                    value=val,
+                    source=source,
+                    confidence=float(meta.get("confidence", 0.96 if source == "ehr" else 0.9)),
+                    last_confirmed_at=meta.get("last_confirmed_at"),
+                )
+            )
         else:
-            missing.append(MissingField(
-                field_id=field.field_id,
-                label=field.label,
-                question=f"Could you please provide your {field.label.lower()}?",
-                type=field.type,
-                required=field.required,
-            ))
+            missing.append(
+                MissingField(
+                    field_id=field.field_id,
+                    label=field.label,
+                    question=_question_for_field(field, canonical_key),
+                    type=field.type,
+                    required=field.required,
+                )
+            )
 
     prefilled = PrefilledForm(
         form_id=form_schema.form_id,
         patient_id=patient_id,
         filled_fields=filled,
         missing_fields=missing,
-        questions=[],
+        questions=_group_into_questions(missing, opening_context=str(context.get("reason_for_visit", ""))),
         stats=FormStats(
             total=len(form_schema.fields),
             filled=len(filled),
@@ -368,6 +646,13 @@ def local_prefill(form_schema: "FormSchema", patient_id: str) -> "PrefilledForm"
     )
     _prefilled_forms[form_schema.form_id] = prefilled
     return prefilled
+
+
+def local_prefill(form_schema: "FormSchema", patient_id: str, visit_id: Optional[str] = None) -> "PrefilledForm":
+    """
+    Backward-compatible wrapper for the deterministic DB-first prefill path.
+    """
+    return prefill_from_db(form_schema, patient_id, visit_id=visit_id)
 
 
 _GROUP_SYSTEM = """
@@ -578,12 +863,19 @@ def fill_form(prefilled: PrefilledForm, responses: CallResponses) -> CompletedFo
             needs_review=answer.get("needs_review", False),
         ))
 
+    from app.services import store as _store
+
+    assignment = _store.get_assignment_by_form_id(prefilled.form_id)
     completed = CompletedForm(
         form_id=prefilled.form_id,
         patient_id=prefilled.patient_id,
+        visit_id=assignment.visit_id if assignment else None,
+        template_id=assignment.template_id if assignment else None,
         fields=all_fields,
+        created_at=datetime.now(timezone.utc).isoformat(),
     )
     _completed_forms[prefilled.form_id] = completed
+    _store.save_completed_form(completed)
     return completed
 
 
@@ -979,7 +1271,11 @@ def get_prefilled_form(form_id: str) -> PrefilledForm | None:
     return _prefilled_forms.get(form_id)
 
 def get_completed_form(form_id: str) -> CompletedForm | None:
-    return _completed_forms.get(form_id)
+    completed = _completed_forms.get(form_id)
+    if completed:
+        return completed
+    from app.services import store as _store
+    return _store.get_completed_form(form_id)
 
 def get_clinical_brief(form_id: str) -> ClinicalBrief | None:
     return _clinical_briefs.get(form_id)

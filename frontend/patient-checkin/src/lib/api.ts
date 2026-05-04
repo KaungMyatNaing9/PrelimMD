@@ -48,6 +48,7 @@ export interface CheckInField {
   section: string;
   prefilled_value?: string | boolean | null;
   source?: string | null;
+  last_confirmed_at?: string | null;
   needs_confirmation: boolean;
   is_missing: boolean;
 }

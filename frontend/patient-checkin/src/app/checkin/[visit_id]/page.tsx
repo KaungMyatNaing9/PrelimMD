@@ -1,21 +1,32 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getCheckinForms,
-  scanCheckinForm,
   signConsent,
   submitCheckin,
   type CheckInField,
   type CheckInFormGroup,
-  type CheckInScannedField,
 } from "@/lib/api";
 
 type Step = "review" | "missing" | "sign" | "done";
+type BrowserSpeechRecognition = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: { results?: ArrayLike<ArrayLike<{ transcript?: string }>> }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+type SpeechRecognitionCtor = new () => BrowserSpeechRecognition;
+type MergedField = CheckInField & { form_names: string[] };
 
 const STEP_LABELS = ["Verify", "Review Form", "Complete Fields", "Sign & Submit"];
 const STEP_KEYS: Step[] = ["review", "missing", "sign", "done"];
+const NON_FORM_FIELDS = new Set(["consent_signature", "consent_date"]);
 
 function StepBar({ current }: { current: Step }) {
   const idx = STEP_KEYS.indexOf(current);
@@ -23,9 +34,7 @@ function StepBar({ current }: { current: Step }) {
     <div className="step-list">
       {STEP_LABELS.map((label, i) => (
         <div key={label} className="step-item">
-          <div className={`step-dot${i < idx ? " done" : i === idx ? " active" : ""}`}>
-            {i < idx ? "✓" : i + 1}
-          </div>
+          <div className={`step-dot${i < idx ? " done" : i === idx ? " active" : ""}`}>{i < idx ? "✓" : i + 1}</div>
           <div className={`step-label${i === idx ? " active" : ""}`}>{label}</div>
         </div>
       ))}
@@ -47,31 +56,53 @@ function ProgressBar({ pct }: { pct: number }) {
   );
 }
 
+function mergeFormGroups(groups: CheckInFormGroup[]): MergedField[] {
+  const merged = new Map<string, MergedField>();
+  for (const group of groups) {
+    for (const field of group.fields) {
+      const existing = merged.get(field.field_id);
+      if (!existing) {
+        merged.set(field.field_id, { ...field, form_names: [group.form_name] });
+        continue;
+      }
+      existing.required = existing.required || field.required;
+      existing.needs_confirmation = existing.needs_confirmation || field.needs_confirmation;
+      existing.is_missing = existing.is_missing && field.is_missing;
+      existing.form_names = Array.from(new Set([...existing.form_names, group.form_name]));
+      if (existing.prefilled_value == null && field.prefilled_value != null) {
+        existing.prefilled_value = field.prefilled_value;
+        existing.source = field.source;
+        existing.last_confirmed_at = field.last_confirmed_at;
+      }
+      if (!existing.last_confirmed_at && field.last_confirmed_at) {
+        existing.last_confirmed_at = field.last_confirmed_at;
+      }
+    }
+  }
+  return Array.from(merged.values());
+}
+
+function confirmedLabel(field: MergedField) {
+  if (!field.last_confirmed_at) return "";
+  return `Prefilled from prior visit on ${field.last_confirmed_at.slice(0, 10)}`;
+}
+
 export default function CheckinPage() {
   const { visit_id } = useParams<{ visit_id: string }>();
   const router = useRouter();
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
   const [formGroups, setFormGroups] = useState<CheckInFormGroup[]>([]);
   const [step, setStep] = useState<Step>("review");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [edits, setEdits] = useState<Record<string, string>>({});
-  const [scanApplied, setScanApplied] = useState<Record<string, string>>({});
   const [signature, setSignature] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
-  const [scanBusy, setScanBusy] = useState(false);
-  const [scanMessage, setScanMessage] = useState("");
-  const [scanPreview, setScanPreview] = useState<string | null>(null);
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraError, setCameraError] = useState("");
-  const [previewReady, setPreviewReady] = useState(false);
-
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [listeningField, setListeningField] = useState<string | null>(null);
+  const [guideIndex, setGuideIndex] = useState(0);
+  const [voiceGuide, setVoiceGuide] = useState(false);
 
   useEffect(() => {
     if (!visit_id) return;
@@ -83,62 +114,95 @@ export default function CheckinPage() {
 
   useEffect(() => {
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
       }
+      recognitionRef.current?.stop();
     };
   }, []);
 
-  useEffect(() => {
-    if (!cameraOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [cameraOpen]);
+  const mergedFields = useMemo(() => mergeFormGroups(formGroups), [formGroups]);
 
-  // Bind stream synchronously after the <video> mounts so srcObject is set before the first paint.
-  useLayoutEffect(() => {
-    const video = videoRef.current;
-    if (!cameraOpen || !video || !streamRef.current) return;
-    video.srcObject = streamRef.current;
-    video.play().catch((err) => {
-      setCameraError("We couldn't start the camera preview. Please try again.");
-      console.error("video.play failed:", err);
-    });
-    return () => {
-      video.srcObject = null;
-    };
-  }, [cameraOpen]);
+  const currentValueFor = useCallback((field: MergedField) => {
+    const edited = edits[field.field_id];
+    if (edited != null && edited !== "") return edited;
+    const answered = answers[field.field_id];
+    if (answered != null && answered !== "") return answered;
+    if (field.prefilled_value != null) return String(field.prefilled_value);
+    return "";
+  }, [answers, edits]);
 
-  const allFields = useMemo(() => formGroups.flatMap((g) => g.fields), [formGroups]);
-  const fieldById = useMemo(
-    () => Object.fromEntries(allFields.map((field) => [field.field_id, field])),
-    [allFields]
+  const reviewFields = useMemo(
+    () => mergedFields.filter((field) => !field.is_missing || field.prefilled_value != null),
+    [mergedFields]
   );
-  const missingFields = allFields.filter((f) => f.required && f.is_missing);
-  const reviewFields = allFields.filter((f) => !f.is_missing);
-  const filledCount = reviewFields.length + Object.keys(answers).filter((fieldId) => Boolean(answers[fieldId])).length;
-  const remainingCount = allFields.filter(
-    (field) => field.is_missing && !(answers[field.field_id] && answers[field.field_id].trim())
-  ).length;
+  const missingFields = useMemo(
+    () =>
+      mergedFields.filter(
+        (field) =>
+          !NON_FORM_FIELDS.has(field.field_id) &&
+          (field.is_missing || currentValueFor(field).trim() === "")
+      ),
+    [mergedFields, currentValueFor]
+  );
+  const unansweredCount = useMemo(
+    () => missingFields.filter((field) => !currentValueFor(field).trim()).length,
+    [missingFields, currentValueFor]
+  );
+  const guideField = missingFields[guideIndex] ?? null;
+  const filledCount = useMemo(
+    () => mergedFields.filter((field) => currentValueFor(field).trim()).length,
+    [mergedFields, currentValueFor]
+  );
 
-  const handleSubmit = async () => {
+  function speakText(text: string) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setError("Voice playback is not available on this device.");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.96;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function startDictation(fieldId: string, onText: (text: string) => void) {
+    const ctor = (window as Window & { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition
+      || (window as Window & { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
+    if (!ctor) {
+      setError("Speech-to-text is not available on this device.");
+      return;
+    }
+    recognitionRef.current?.stop();
+    const recognition = new ctor();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript?.trim() ?? "";
+      if (transcript) onText(transcript);
+    };
+    recognition.onerror = () => setError("Could not transcribe your answer. Please try again or type it.");
+    recognition.onend = () => setListeningField((current) => (current === fieldId ? null : current));
+    recognitionRef.current = recognition;
+    setListeningField(fieldId);
+    recognition.start();
+  }
+
+  async function handleSaveAndContinue() {
     setBusy(true);
     setError("");
     try {
-      const combined = { ...answers, ...edits };
-      await submitCheckin(visit_id, combined);
+      await submitCheckin(visit_id, { ...answers, ...edits });
       setStep("sign");
     } catch {
       setError("Could not save your answers. Please try again.");
     } finally {
       setBusy(false);
     }
-  };
+  }
 
-  const handleSign = async () => {
+  async function handleSign() {
     if (!signature.trim()) {
       setError("Please type your full name to sign.");
       return;
@@ -153,144 +217,9 @@ export default function CheckinPage() {
     } finally {
       setBusy(false);
     }
-  };
+  }
 
-  const applyScannedFields = (scannedFields: CheckInScannedField[]) => {
-    const nextAnswers: Record<string, string> = {};
-    const nextEdits: Record<string, string> = {};
-    const nextApplied: Record<string, string> = {};
-
-    for (const scannedField of scannedFields) {
-      const currentField = fieldById[scannedField.field_id];
-      if (!currentField) continue;
-
-      const normalizedValue = String(scannedField.value);
-      nextApplied[scannedField.field_id] = normalizedValue;
-
-      if (currentField.is_missing) {
-        nextAnswers[scannedField.field_id] = normalizedValue;
-      } else {
-        nextEdits[scannedField.field_id] = normalizedValue;
-      }
-    }
-
-    setAnswers((prev) => ({ ...prev, ...nextAnswers }));
-    setEdits((prev) => ({ ...prev, ...nextEdits }));
-    setScanApplied((prev) => ({ ...prev, ...nextApplied }));
-  };
-
-  const handleScanBlob = async (file: Blob, filename?: string) => {
-    setScanBusy(true);
-    setError("");
-    setCameraError("");
-    setScanMessage("");
-    setScanPreview(null);
-    setScanApplied({});
-    try {
-      const result = await scanCheckinForm(visit_id, file, filename);
-      applyScannedFields(result.scanned_fields);
-      setScanMessage(result.message);
-      setScanPreview(result.ocr_preview ?? null);
-      if (result.scanned_fields.some((field) => fieldById[field.field_id]?.is_missing)) {
-        setStep("missing");
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Camera scan failed. Please try again.");
-    } finally {
-      setScanBusy(false);
-    }
-  };
-
-  const openCamera = async () => {
-    setCameraError("");
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("Camera access is not available on this device. You can upload a photo instead.");
-      return;
-    }
-
-    try {
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false,
-        });
-      } catch (err) {
-        // On laptops without a rear camera the environment constraint can fail; retry with any camera.
-        if (err instanceof DOMException && err.name === "OverconstrainedError") {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        } else {
-          throw err;
-        }
-      }
-      streamRef.current = stream;
-      setPreviewReady(false);
-      setCameraOpen(true);
-      // Stream binding happens in the useEffect that runs after the <video> element mounts.
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "NotAllowedError") {
-        setCameraError("Camera permission was denied. Please allow camera access and try again.");
-      } else {
-        setCameraError("We couldn't access the camera. Please allow camera permissions or upload a photo.");
-      }
-    }
-  };
-
-  const stopCamera = () => {
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    setPreviewReady(false);
-    setCameraOpen(false);
-  };
-
-  const capturePhoto = async () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) {
-      setCameraError("Camera is not ready. Close the camera and try again.");
-      return;
-    }
-
-    const context = canvas.getContext("2d");
-    if (!context) {
-      setCameraError("Could not prepare capture surface. Please try again.");
-      return;
-    }
-
-    if (!video.videoWidth || !video.videoHeight) {
-      setCameraError("Preview is still starting. Wait until you can see the live image, then try again.");
-      return;
-    }
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
-    if (!blob) {
-      setCameraError("We couldn't capture the photo. Please try again.");
-      return;
-    }
-
-    // Wrap in a File so the MIME type is preserved reliably across all browsers (some WebKit
-    // builds strip it when appending a raw Blob to FormData).
-    const imageFile = new File([blob], "capture.jpg", { type: "image/jpeg" });
-    await handleScanBlob(imageFile, "capture.jpg");
-    stopCamera();
-  };
-
-  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await handleScanBlob(file, file.name);
-    event.target.value = "";
-  };
-
-  const pct = step === "review" ? 25 : step === "missing" ? 60 : step === "sign" ? 85 : 100;
+  const pct = step === "review" ? 25 : step === "missing" ? 60 : step === "sign" ? 88 : 100;
 
   if (loading) {
     return (
@@ -305,136 +234,109 @@ export default function CheckinPage() {
       <StepBar current={step} />
       <ProgressBar pct={pct} />
 
-      {error && <div className="error-msg">{error}</div>}
+      {error ? <div className="error-msg">{error}</div> : null}
 
       <div className="panel summary-panel">
         <div className="summary-grid">
           <div className="summary-item">
-            <div className="summary-kicker">Fields Filled</div>
+            <div className="summary-kicker">Unique Fields Filled</div>
             <div className="summary-value">{filledCount}</div>
           </div>
           <div className="summary-item">
             <div className="summary-kicker">Still Remaining</div>
-            <div className="summary-value">{remainingCount}</div>
+            <div className="summary-value">{missingFields.filter((field) => !currentValueFor(field).trim()).length}</div>
           </div>
           <div className="summary-item">
-            <div className="summary-kicker">Forms</div>
+            <div className="summary-kicker">Forms Assigned</div>
             <div className="summary-value">{formGroups.length}</div>
           </div>
         </div>
       </div>
 
-      <div className="panel scanner-panel">
-        <div className="scanner-head">
-          <div>
-            <div className="section-label">Camera Scan</div>
-            <h2 style={{ marginBottom: "0.35rem" }}>Scan a paper form or insurance card</h2>
-            <p>
-              Hold the document up to the camera and we&apos;ll pull in anything we can. You&apos;ll still
-              review every value before submission.
-            </p>
-          </div>
-        </div>
-
-        <div className="btn-row" style={{ marginTop: "1rem" }}>
-          <button className="btn btn-primary" type="button" onClick={openCamera} disabled={scanBusy || cameraOpen}>
-            {cameraOpen ? "Camera Ready" : "Open camera"}
-          </button>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={scanBusy}
-          >
-            Upload photo instead
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,application/pdf"
-            style={{ display: "none" }}
-            onChange={handleFileSelected}
-          />
-        </div>
-
-        {cameraError ? <div className="error-msg" style={{ marginTop: "1rem" }}>{cameraError}</div> : null}
-
-        {cameraOpen ? (
-          <div className="camera-fullscreen" role="dialog" aria-modal="true" aria-label="Camera scan">
-            <video ref={videoRef} className="camera-video" playsInline muted onLoadedMetadata={() => setPreviewReady(true)} />
-            <canvas ref={canvasRef} style={{ display: "none" }} />
-            <div className="camera-toolbar">
-              <button className="btn btn-primary" type="button" onClick={capturePhoto} disabled={scanBusy || !previewReady}>
-                {scanBusy ? "Scanning..." : !previewReady ? "Starting preview..." : "Capture and scan"}
-              </button>
-              <button className="btn btn-secondary" type="button" onClick={stopCamera}>
-                Close camera
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {scanMessage ? <div className="helper-note" style={{ marginTop: "1rem" }}>{scanMessage}</div> : null}
-        {scanPreview ? (
-          <div className="ocr-preview">
-            <div className="section-label">OCR Preview</div>
-            <pre>{scanPreview}</pre>
-          </div>
-        ) : null}
-      </div>
-
-      {step === "review" && (
+      {step === "review" ? (
         <div className="panel">
           <h2>Review Your Information</h2>
           <p style={{ marginBottom: "1.5rem" }}>
-            We pre-filled these fields from your existing records. Review each one and correct
-            anything that looks wrong.
+            We merged your assigned forms so duplicate questions only appear once. Please confirm the prefilled information and update anything that has changed.
           </p>
 
-          {reviewFields.length === 0 ? (
-            <div style={{ color: "var(--text-soft)", padding: "1rem 0" }}>No prefilled fields found.</div>
-          ) : (
-            <div className="field-review-list">
-              {reviewFields.map((field) => (
-                <FieldReviewCard
-                  key={field.field_id}
-                  field={field}
-                  editValue={edits[field.field_id]}
-                  scannedValue={scanApplied[field.field_id]}
-                  onEdit={(value) => setEdits((prev) => ({ ...prev, [field.field_id]: value }))}
-                />
-              ))}
-            </div>
-          )}
+          <div className="field-review-list">
+            {reviewFields.map((field) => (
+              <FieldReviewCard
+                key={field.field_id}
+                field={field}
+                value={currentValueFor(field)}
+                onCommit={(value) => setEdits((prev) => ({ ...prev, [field.field_id]: value }))}
+              />
+            ))}
+          </div>
 
           <div className="btn-row" style={{ marginTop: "2rem" }}>
-            <button
-              className="btn btn-primary"
-              onClick={() => (missingFields.length > 0 ? setStep("missing") : setStep("sign"))}
-            >
-              {missingFields.length > 0
-                ? `Continue - ${missingFields.length} field${missingFields.length > 1 ? "s" : ""} remaining →`
-                : "All good - Continue →"}
+            <button className="btn btn-primary" onClick={() => setStep(missingFields.length ? "missing" : "sign")}>
+              {missingFields.length ? `Continue - ${missingFields.length} question${missingFields.length > 1 ? "s" : ""} remaining →` : "Continue to final review →"}
             </button>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {step === "missing" && (
+      {step === "missing" ? (
         <div className="panel">
-          <h2>Complete Your Form</h2>
-          <p style={{ marginBottom: "1.5rem" }}>
-            Please answer these {missingFields.length} question{missingFields.length > 1 ? "s" : ""} so we can prepare for your visit.
+          <h2>Complete The Remaining Questions</h2>
+          <p style={{ marginBottom: "1.25rem" }}>
+            Every remaining question is listed below. You can type, tap the speaker to hear a question, or use the microphone to dictate your answer.
           </p>
+
+          <div className="voice-assistant-card">
+            <div>
+              <div className="voice-assistant-title">Guided voice fill</div>
+              <div className="voice-assistant-copy">
+                Use the built-in assistant to move through the remaining questions one by one.
+              </div>
+            </div>
+            <div className="btn-row">
+              <button className="btn btn-secondary" type="button" onClick={() => setVoiceGuide((current) => !current)}>
+                {voiceGuide ? "Hide voice guide" : "Start voice guide"}
+              </button>
+              <button className="btn btn-secondary" type="button" onClick={() => speakText(missingFields.map((field, index) => `Question ${index + 1}. ${field.label}.`).join(" "))}>
+                Read all questions
+              </button>
+            </div>
+            {voiceGuide && guideField ? (
+              <div className="voice-guide-panel">
+                <div className="voice-guide-step">Question {guideIndex + 1} of {missingFields.length}</div>
+                <div className="voice-guide-question">{guideField.label}</div>
+                <div className="btn-row">
+                  <button className="btn btn-secondary" type="button" onClick={() => speakText(guideField.label)}>
+                    🔊 Speak
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    onClick={() => startDictation(guideField.field_id, (text) => setAnswers((prev) => ({ ...prev, [guideField.field_id]: text })))}
+                  >
+                    {listeningField === guideField.field_id ? "Listening..." : "🎤 Answer"}
+                  </button>
+                  <button className="btn btn-secondary" type="button" onClick={() => setGuideIndex((current) => Math.max(0, current - 1))} disabled={guideIndex === 0}>
+                    Previous
+                  </button>
+                  <button className="btn btn-secondary" type="button" onClick={() => setGuideIndex((current) => Math.min(missingFields.length - 1, current + 1))} disabled={guideIndex >= missingFields.length - 1}>
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
 
           <div className="form-grid">
             {missingFields.map((field) => (
               <MissingFieldInput
                 key={field.field_id}
                 field={field}
-                value={answers[field.field_id] ?? ""}
-                scannedValue={scanApplied[field.field_id]}
+                value={currentValueFor(field)}
+                listening={listeningField === field.field_id}
                 onChange={(value) => setAnswers((prev) => ({ ...prev, [field.field_id]: value }))}
+                onSpeak={() => speakText(field.label)}
+                onDictate={() => startDictation(field.field_id, (text) => setAnswers((prev) => ({ ...prev, [field.field_id]: text })))}
               />
             ))}
           </div>
@@ -443,34 +345,53 @@ export default function CheckinPage() {
             <button className="btn btn-secondary" onClick={() => setStep("review")}>
               ← Back
             </button>
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={busy}>
-              {busy ? "Saving..." : "Save & Continue →"}
+            <button className="btn btn-primary" onClick={handleSaveAndContinue} disabled={busy || unansweredCount > 0}>
+              {busy ? "Saving..." : unansweredCount > 0 ? `Complete ${unansweredCount} remaining field${unansweredCount > 1 ? "s" : ""}` : "Save & Continue →"}
             </button>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {step === "sign" && (
+      {step === "sign" ? (
         <div className="panel">
-          <h2>Consent & Signature</h2>
+          <h2>Final Review Before Signing</h2>
           <p style={{ marginBottom: "1.5rem" }}>
-            By signing below, you confirm that the information you&apos;ve provided is accurate and
-            you consent to treatment at this facility.
+            This is the final merged form view. If something is wrong, go back and change it before signing.
           </p>
+
+          <div className="final-review-grid">
+            {mergedFields
+              .filter((field) => !NON_FORM_FIELDS.has(field.field_id))
+              .map((field) => (
+                <div key={field.field_id} className="final-review-card">
+                  <div className="final-review-top">
+                    <div>
+                      <div className="field-label">{field.label}</div>
+                      <div className="final-review-meta">{field.form_names.join(" • ")}</div>
+                    </div>
+                    <button className="icon-btn" type="button" onClick={() => speakText(`${field.label}. ${currentValueFor(field) || "No answer entered."}`)}>
+                      🔊
+                    </button>
+                  </div>
+                  <div className={`field-value${!currentValueFor(field) ? " empty" : ""}`}>{currentValueFor(field) || "No answer entered"}</div>
+                  {confirmedLabel(field) ? <div className="review-flag subtle">{confirmedLabel(field)}</div> : null}
+                </div>
+              ))}
+          </div>
 
           <div className="sig-wrap">
             <input
               className="sig-input"
               placeholder="Type your full legal name..."
               value={signature}
-              onChange={(e) => setSignature(e.target.value)}
+              onChange={(event) => setSignature(event.target.value)}
               autoComplete="name"
             />
-            <div className="sig-hint">Your typed name serves as your electronic signature.</div>
+            <div className="sig-hint">Your typed name will be recorded as your electronic signature.</div>
           </div>
 
           <div className="btn-row" style={{ marginTop: "2rem" }}>
-            <button className="btn btn-secondary" onClick={() => setStep(missingFields.length > 0 ? "missing" : "review")}>
+            <button className="btn btn-secondary" onClick={() => setStep("missing")}>
               ← Back
             </button>
             <button className="btn btn-primary" onClick={handleSign} disabled={busy || !signature.trim()}>
@@ -478,46 +399,62 @@ export default function CheckinPage() {
             </button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
 function FieldReviewCard({
   field,
-  editValue,
-  scannedValue,
-  onEdit,
+  value,
+  onCommit,
 }: {
-  field: CheckInField;
-  editValue?: string;
-  scannedValue?: string;
-  onEdit: (v: string) => void;
+  field: MergedField;
+  value: string;
+  onCommit: (v: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const displayVal = editValue ?? scannedValue ?? (field.prefilled_value != null ? String(field.prefilled_value) : "");
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  function finishEdit() {
+    onCommit(draft);
+    setEditing(false);
+  }
 
   return (
-    <div className={`field-card${field.needs_review ? " needs-review" : ""}${scannedValue ? " scanned" : ""}`}>
+    <div className={`field-card${field.needs_confirmation ? " needs-review" : ""}`}>
       <div className="field-label">{field.label}</div>
+      <div className="final-review-meta">{field.form_names.join(" • ")}</div>
       {editing ? (
-        <input
-          className="field-edit-input"
-          value={editValue ?? displayVal}
-          onChange={(e) => onEdit(e.target.value)}
-          onBlur={() => setEditing(false)}
-          autoFocus
-        />
+        <div className="edit-row">
+          <input
+            className="field-edit-input"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={finishEdit}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") finishEdit();
+              if (event.key === "Escape") {
+                setDraft(value);
+                setEditing(false);
+              }
+            }}
+            autoFocus
+          />
+          <button className="btn btn-secondary btn-sm" type="button" onClick={finishEdit}>
+            Done
+          </button>
+        </div>
       ) : (
         <>
-          <div className={`field-value${!displayVal ? " empty" : ""}`}>{displayVal || "Not provided"}</div>
-          {field.needs_review && <div className="review-flag">Please verify this value</div>}
-          {scannedValue ? <div className="scan-flag">Updated from camera scan</div> : null}
-          <button
-            className="btn btn-secondary btn-sm"
-            style={{ marginTop: "0.5rem", width: "fit-content", fontSize: "0.8rem" }}
-            onClick={() => setEditing(true)}
-          >
+          <div className={`field-value${!value ? " empty" : ""}`}>{value || "Not provided"}</div>
+          {field.last_confirmed_at ? <div className="review-flag subtle">{confirmedLabel(field)}</div> : null}
+          {field.needs_confirmation ? <div className="review-flag">Please verify this value</div> : null}
+          <button className="btn btn-secondary btn-sm" style={{ marginTop: "0.5rem", width: "fit-content", fontSize: "0.8rem" }} onClick={() => setEditing(true)}>
             Edit
           </button>
         </>
@@ -529,32 +466,39 @@ function FieldReviewCard({
 function MissingFieldInput({
   field,
   value,
-  scannedValue,
+  listening,
   onChange,
+  onSpeak,
+  onDictate,
 }: {
-  field: CheckInField;
+  field: MergedField;
   value: string;
-  scannedValue?: string;
+  listening: boolean;
   onChange: (v: string) => void;
+  onSpeak: () => void;
+  onDictate: () => void;
 }) {
+  const header = (
+    <div className="question-header">
+      <label>
+        {field.label}
+        {field.required ? <span style={{ color: "var(--danger)" }}> *</span> : null}
+      </label>
+      <div className="question-tools">
+        <button className="icon-btn" type="button" onClick={onSpeak}>🔊</button>
+        <button className="icon-btn" type="button" onClick={onDictate}>{listening ? "…" : "🎤"}</button>
+      </div>
+    </div>
+  );
+
   if (field.type === "boolean") {
     return (
       <div className="field">
-        <label>
-          {field.label}
-          {field.required && <span style={{ color: "var(--danger)" }}> *</span>}
-        </label>
-        {scannedValue ? <div className="scan-flag">Suggested from camera: {scannedValue}</div> : null}
+        {header}
         <div className="btn-row">
-          {["Yes", "No"].map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              className={`btn ${value === opt.toLowerCase() ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => onChange(opt.toLowerCase())}
-              style={{ minWidth: "7rem" }}
-            >
-              {opt}
+          {["yes", "no"].map((opt) => (
+            <button key={opt} type="button" className={`btn ${value === opt ? "btn-primary" : "btn-secondary"}`} onClick={() => onChange(opt)} style={{ minWidth: "7rem" }}>
+              {opt[0].toUpperCase() + opt.slice(1)}
             </button>
           ))}
         </div>
@@ -562,60 +506,18 @@ function MissingFieldInput({
     );
   }
 
-  if (field.type === "number") {
-    return (
-      <div className="field">
-        <label>
-          {field.label}
-          {field.required && <span style={{ color: "var(--danger)" }}> *</span>}
-        </label>
-        {scannedValue ? <div className="scan-flag">Suggested from camera: {scannedValue}</div> : null}
-        <input
-          type="number"
-          className={`input${value ? " has-value" : ""}`}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          min={0}
-          max={10}
-          placeholder="0-10"
-        />
-      </div>
-    );
-  }
-
-  if (field.type === "date") {
-    return (
-      <div className="field">
-        <label>
-          {field.label}
-          {field.required && <span style={{ color: "var(--danger)" }}> *</span>}
-        </label>
-        {scannedValue ? <div className="scan-flag">Suggested from camera: {scannedValue}</div> : null}
-        <input
-          type="date"
-          className={`input${value ? " has-value" : ""}`}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="field">
-      <label>
-        {field.label}
-        {field.required && <span style={{ color: "var(--danger)" }}> *</span>}
-      </label>
-      {scannedValue ? <div className="scan-flag">Suggested from camera: {scannedValue}</div> : null}
+      {header}
       <input
-        type={field.type === "email" ? "email" : field.type === "phone" ? "tel" : "text"}
+        type={field.type === "email" ? "email" : field.type === "phone" ? "tel" : field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
         className={`input${value ? " has-value" : ""}`}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         placeholder={`Enter ${field.label.toLowerCase()}...`}
         autoComplete={field.type === "email" ? "email" : field.type === "phone" ? "tel" : "off"}
       />
+      <div className="final-review-meta">{field.form_names.join(" • ")}</div>
     </div>
   );
 }

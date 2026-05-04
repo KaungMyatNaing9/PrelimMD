@@ -14,7 +14,7 @@ export default function FollowUpsPage() {
     Promise.all([getFollowUpTasks(), getPatients()])
       .then(([taskData, patientData]) => {
         setTasks(taskData);
-        setPatients(Object.fromEntries(patientData.map((pt) => [pt.patient_id, pt])));
+        setPatients(Object.fromEntries(patientData.map((patient) => [patient.patient_id, patient])));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -25,85 +25,70 @@ export default function FollowUpsPage() {
   );
 
   return (
-    <div className="page">
-      <section className="page-hero">
-        <div>
-          <div className="eyebrow">Post-Discharge</div>
-          <h2>Follow-up calls and recovery outreach.</h2>
-          <p>
-            Monitor scheduled callbacks, inspect question sets, and keep the care team aligned on
-            what still needs patient contact.
-          </p>
-        </div>
-        <div className="page-hero-actions">
-          {(["all", "scheduled", "completed"] as const).map((item) => (
-            <button
-              key={item}
-              className={`btn ${filter === item ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => setFilter(item)}
-              style={{ textTransform: "capitalize" }}
-            >
-              {item}
-            </button>
-          ))}
+    <div className="space-y-6">
+      <section className="card p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-coral">Doctor Workflow</div>
+            <h2 className="mt-2 text-2xl font-semibold text-navy">Follow-up queue</h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(["all", "scheduled", "completed"] as const).map((item) => (
+              <button key={item} type="button" onClick={() => setFilter(item)} className={filter === item ? "btn-primary" : "btn-secondary"}>
+                {item[0].toUpperCase() + item.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
-      <section className="table-card">
-        <div className="panel-header" style={{ padding: "1.2rem 1.25rem 0" }}>
-          <div>
-            <h3>Follow-Up Queue</h3>
-            <div className="panel-subtext">
-              {filtered.length} visible task{filtered.length === 1 ? "" : "s"} in the current view.
-            </div>
-          </div>
-        </div>
-
-        <div className="visit-list" style={{ padding: "0 1.25rem 1.25rem" }}>
-          {loading ? (
-            <div className="loading">Loading follow-up calls...</div>
-          ) : filtered.length === 0 ? (
-            <div className="empty">No follow-up tasks found.</div>
-          ) : (
-            filtered.map((task) => {
-              const patient = patients[task.patient_id];
-              const scheduledDate = new Date(task.scheduled_at);
-
-              return (
-                <Link key={task.task_id} href={`/followups/${task.task_id}`} style={{ display: "contents" }}>
-                  <div className="visit-row">
-                    <div className="visit-time">
-                      <span>
-                        {scheduledDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </span>
-                      <span className="visit-time-sub">
-                        {scheduledDate.toLocaleTimeString("en-US", {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="visit-name">
+      <section className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Patient</th>
+                <th className="px-5 py-3 font-semibold">Scheduled</th>
+                <th className="px-5 py-3 font-semibold">Questions</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 font-semibold">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-8 text-slate">Loading follow-up tasks...</td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-8 text-slate">No follow-up tasks found.</td>
+                </tr>
+              ) : (
+                filtered.map((task) => {
+                  const patient = patients[task.patient_id];
+                  return (
+                    <tr key={task.task_id} className="border-t border-slate-100">
+                      <td className="px-5 py-4 font-semibold text-navy">
                         {patient ? `${patient.first_name} ${patient.last_name}` : task.patient_id}
-                      </div>
-                      <div className="visit-meta">
-                        {task.questions.length} questions · linked to visit {task.visit_id}
-                      </div>
-                    </div>
-                    <span className="pill">{task.created_by}</span>
-                    <span
-                      className={`badge ${
-                        task.status === "completed" ? "badge-completed" : "badge-assigned"
-                      }`}
-                    >
-                      {task.status}
-                    </span>
-                  </div>
-                </Link>
-              );
-            })
-          )}
+                      </td>
+                      <td className="px-5 py-4 text-slate">{task.scheduled_at.slice(0, 16).replace("T", " ")}</td>
+                      <td className="px-5 py-4 text-slate">{task.questions.length}</td>
+                      <td className="px-5 py-4">
+                        <span className={`badge ${task.flags.length ? "bg-rose-100 text-rose-700" : task.status === "completed" ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-700"}`}>
+                          {task.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <Link href={`/followups/${task.task_id}`} className="btn-secondary">
+                          Open Detail
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
     </div>
