@@ -86,7 +86,7 @@ async def stream_audio(websocket: WebSocket):
             and websocket.client_state != WebSocketState.DISCONNECTED
         ):
             try:
-                await websocket.close(code=1011, reason=str(exc))
+                await websocket.close(code=1011, reason="voice stream error")
             except RuntimeError:
                 pass
 

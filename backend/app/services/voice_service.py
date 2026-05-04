@@ -5,6 +5,7 @@
 # TODO: Voice - implement synthesize() when TTS is needed
 
 import asyncio
+import contextlib
 import json
 import re
 from typing import Any
@@ -97,9 +98,42 @@ async def stream_session(browser_ws: WebSocket) -> None:
         "help_text": None,
         "remaining_fields": [],
     }
+    dg_socket = None
+    dg_context = None
+    transcript_task: asyncio.Task[None] | None = None
+    client = AsyncDeepgramClient(api_key=settings.deepgram_api_key) if settings.deepgram_api_key else None
 
-    async def handle_browser_messages(dg_socket=None) -> None:
+    async def ensure_dg_socket():
+        nonlocal dg_socket, dg_context, transcript_task
+        if dg_socket is not None or client is None:
+            return dg_socket
+
+        dg_context = client.listen.v1.connect(
+            model="nova-3",
+            endpointing=300,
+            smart_format="true",
+            interim_results="true",
+        )
+        dg_socket = await dg_context.__aenter__()
+        transcript_task = asyncio.create_task(handle_transcripts(dg_socket))
+        return dg_socket
+
+    async def close_dg_socket() -> None:
+        nonlocal dg_socket, dg_context, transcript_task
+        if transcript_task is not None:
+            transcript_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await transcript_task
+            transcript_task = None
+        if dg_context is not None:
+            with contextlib.suppress(Exception):
+                await dg_context.__aexit__(None, None, None)
+            dg_context = None
+        dg_socket = None
+
+    async def handle_browser_messages() -> None:
         """Read mixed browser messages: raw audio bytes or JSON assistant events."""
+        nonlocal dg_socket
         while True:
             message = await browser_ws.receive()
             if message["type"] == "websocket.disconnect":
@@ -107,8 +141,15 @@ async def stream_session(browser_ws: WebSocket) -> None:
 
             chunk = message.get("bytes")
             if chunk is not None:
-                if dg_socket is not None:
-                    await dg_socket.send_media(chunk)
+                active_socket = dg_socket
+                if active_socket is None and client is not None:
+                    active_socket = await ensure_dg_socket()
+                    dg_socket = active_socket
+                if active_socket is not None:
+                    try:
+                        await active_socket.send_media(chunk)
+                    except Exception:
+                        await close_dg_socket()
                 continue
 
             text = message.get("text")
@@ -155,51 +196,59 @@ async def stream_session(browser_ws: WebSocket) -> None:
 
     async def handle_transcripts(dg_socket) -> None:
         """Read Deepgram events and send structured JSON to browser."""
-        async for event in dg_socket:
-            if not isinstance(event, ListenV1Results):
-                continue
+        nonlocal transcript_task
+        try:
+            async for event in dg_socket:
+                if not isinstance(event, ListenV1Results):
+                    continue
 
-            transcript = event.channel.alternatives[0].transcript
-            if not transcript:
-                continue
+                transcript = event.channel.alternatives[0].transcript
+                if not transcript:
+                    continue
 
-            confidence = event.channel.alternatives[0].confidence
+                confidence = event.channel.alternatives[0].confidence
 
-            if event.speech_final:
-                assistant_reply = await _call_llm(transcript, stream_state)
-                _persist_assistant_exchange(
-                    visit_id=stream_state.get("visit_id"),
-                    transcript=transcript,
-                    reply=assistant_reply.get("reply", ""),
-                    field_ids=assistant_reply.get("consumed_field_ids") or stream_state.get("field_ids") or [],
-                    extracted_answers=assistant_reply.get("extracted_answers") or {},
-                )
-                await browser_ws.send_json({
-                    "type": "assistant",
-                    "transcript": transcript,
-                    "confidence": confidence,
-                    **assistant_reply,
-                })
-            elif event.is_final:
-                await browser_ws.send_json({
-                    "type": "partial",
-                    "transcript": transcript,
-                    "confidence": confidence,
-                })
+                if event.speech_final:
+                    assistant_reply = await _call_llm(transcript, stream_state)
+                    _persist_assistant_exchange(
+                        visit_id=stream_state.get("visit_id"),
+                        transcript=transcript,
+                        reply=assistant_reply.get("reply", ""),
+                        field_ids=assistant_reply.get("consumed_field_ids") or stream_state.get("field_ids") or [],
+                        extracted_answers=assistant_reply.get("extracted_answers") or {},
+                    )
+                    await browser_ws.send_json({
+                        "type": "assistant",
+                        "transcript": transcript,
+                        "confidence": confidence,
+                        **assistant_reply,
+                    })
+                elif event.is_final:
+                    await browser_ws.send_json({
+                        "type": "partial",
+                        "transcript": transcript,
+                        "confidence": confidence,
+                    })
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            if browser_ws.client_state.name == "CONNECTED":
+                with contextlib.suppress(Exception):
+                    await browser_ws.send_json({
+                        "type": "error",
+                        "message": "Live listening paused. Start speaking again.",
+                    })
+        finally:
+            transcript_task = None
 
     if not settings.deepgram_api_key:
         await handle_browser_messages()
         return
 
-    client = AsyncDeepgramClient(api_key=settings.deepgram_api_key)
-
-    async with client.listen.v1.connect(
-        model="nova-3",
-        endpointing=300,
-        smart_format="true",
-        interim_results="true",
-    ) as dg_socket:
-        await asyncio.gather(handle_browser_messages(dg_socket), handle_transcripts(dg_socket))
+    try:
+        await handle_browser_messages()
+    finally:
+        await close_dg_socket()
 
 
 def _local_assistant_response(transcript: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -272,8 +321,8 @@ async def _call_llm(transcript: str, payload: dict[str, Any]) -> dict[str, Any]:
     question = str(payload.get("question") or "")
     help_text = str(payload.get("help_text") or "")
     pace = str(payload.get("pace") or "guided")
-    remaining_labels = payload.get("remaining_labels") or []
-    remaining_display = ", ".join(str(label) for label in remaining_labels[:5])
+    remaining_fields = payload.get("remaining_fields") or []
+    remaining_display = ", ".join(str(field.get("label")) for field in remaining_fields[:5])
 
     system = """
 You are a concise medical intake voice assistant for a patient self check-in kiosk.
@@ -337,7 +386,7 @@ def _choose_question_plan(stream_state: dict[str, Any]) -> dict[str, Any]:
     current_field_id = stream_state.get("current_field_id")
 
     if not remaining:
-      return {"field_ids": [], "prompt": "", "help_text": "", "speed_hint": "steady"}
+        return {"field_ids": [], "prompt": "", "help_text": "", "speed_hint": "steady"}
 
     current = next((field for field in remaining if field.get("field_id") == current_field_id), remaining[0])
     batch = [current]

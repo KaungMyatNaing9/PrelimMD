@@ -167,7 +167,16 @@ export async function synthesizeVoice(text: string): Promise<{ audioUrl: string 
 
 export type VoiceAssistantSocketEvent =
   | { type: "plan"; field_ids: string[]; prompt: string; help_text: string; speed_hint?: "fast" | "steady" | "slow" }
-  | { type: "assistant"; transcript: string; reply: string; mode?: string; should_repeat?: boolean; speed_hint?: "fast" | "steady" | "slow" }
+  | {
+      type: "assistant";
+      transcript: string;
+      reply: string;
+      mode?: string;
+      should_repeat?: boolean;
+      speed_hint?: "fast" | "steady" | "slow";
+      extracted_answers?: Record<string, string>;
+      consumed_field_ids?: string[];
+    }
   | { type: "partial"; transcript: string; confidence?: number }
   | { type: "pong" }
   | { type: "error"; message?: string };

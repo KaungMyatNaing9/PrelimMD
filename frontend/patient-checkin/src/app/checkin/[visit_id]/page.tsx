@@ -170,6 +170,14 @@ export default function CheckinPage() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const suppressMicRef = useRef(false);
+  const pendingVoiceCaptureRef = useRef<{
+    fieldId: string;
+    onText: (text: string) => void;
+    autoAdvance?: boolean;
+    echoPatient?: boolean;
+    field?: MergedField | null;
+  } | null>(null);
 
   const [formGroups, setFormGroups] = useState<CheckInFormGroup[]>([]);
   const [step, setStep] = useState<Step>("review");
@@ -189,6 +197,23 @@ export default function CheckinPage() {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [assistantReady, setAssistantReady] = useState(false);
   const [assistantPlan, setAssistantPlan] = useState<AssistantPlan | null>(null);
+  const [handsFreeActive, setHandsFreeActive] = useState(false);
+
+  const assistantPromptFor = useCallback((field: MergedField | null) => {
+    if (!field) return "";
+    if (assistantPlan && assistantPlan.field_ids.includes(field.field_id)) {
+      return assistantPlan.prompt;
+    }
+    return questionPrompt(field);
+  }, [assistantPlan]);
+
+  const assistantHelpFor = useCallback((field: MergedField | null) => {
+    if (!field) return "";
+    if (assistantPlan && assistantPlan.field_ids.includes(field.field_id)) {
+      return assistantPlan.help_text;
+    }
+    return questionHelp(field);
+  }, [assistantPlan]);
 
   useEffect(() => {
     if (!visit_id) return;
@@ -210,6 +235,11 @@ export default function CheckinPage() {
         URL.revokeObjectURL(audioUrlRef.current);
       }
       assistantSocketRef.current?.close();
+      processorRef.current?.disconnect();
+      sourceNodeRef.current?.disconnect();
+      void audioContextRef.current?.close();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      pendingVoiceCaptureRef.current = null;
       setAssistantState("idle");
       recognitionRef.current?.stop();
     };
@@ -262,8 +292,66 @@ export default function CheckinPage() {
     [mergedFields, currentValueFor]
   );
 
-  async function speakText(text: string) {
+  function currentPlanField(): MergedField | null {
+    if (!assistantPlan?.field_ids?.length) return guideField;
+    return mergedFields.find((field) => field.field_id === assistantPlan.field_ids[0]) ?? guideField;
+  }
+
+  function updateAnswersFromAssistant(extracted: Record<string, string>) {
+    if (!Object.keys(extracted).length) return;
+    setAnswers((prev) => ({ ...prev, ...extracted }));
+  }
+
+  const stopBrowserAudioStream = useCallback(() => {
+    processorRef.current?.disconnect();
+    sourceNodeRef.current?.disconnect();
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    if (audioContextRef.current) {
+      void audioContextRef.current.close();
+    }
+    processorRef.current = null;
+    sourceNodeRef.current = null;
+    mediaStreamRef.current = null;
+    audioContextRef.current = null;
+    setListeningField(null);
+    setAssistantState("idle");
+  }, []);
+
+  function downsampleBuffer(buffer: Float32Array, inputRate: number, outputRate: number) {
+    if (outputRate === inputRate) return buffer;
+    const ratio = inputRate / outputRate;
+    const newLength = Math.round(buffer.length / ratio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+      const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+      let accum = 0;
+      let count = 0;
+      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i += 1) {
+        accum += buffer[i];
+        count += 1;
+      }
+      result[offsetResult] = accum / count;
+      offsetResult += 1;
+      offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+  }
+
+  function floatTo16BitPCM(floatBuffer: Float32Array) {
+    const pcmBuffer = new ArrayBuffer(floatBuffer.length * 2);
+    const view = new DataView(pcmBuffer);
+    for (let i = 0; i < floatBuffer.length; i += 1) {
+      const sample = Math.max(-1, Math.min(1, floatBuffer[i]));
+      view.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    }
+    return pcmBuffer;
+  }
+
+  const speakText = useCallback(async (text: string) => {
     try {
+      suppressMicRef.current = true;
       setAssistantState("speaking");
       const { audioUrl, fallbackText } = await synthesizeVoice(text);
       if (audioUrl) {
@@ -276,13 +364,20 @@ export default function CheckinPage() {
         audioUrlRef.current = audioUrl;
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
-        audio.onended = () => setAssistantState("idle");
-        audio.onerror = () => setAssistantState("idle");
+        audio.onended = () => {
+          suppressMicRef.current = false;
+          setAssistantState(handsFreeActive ? "listening" : "idle");
+        };
+        audio.onerror = () => {
+          suppressMicRef.current = false;
+          setAssistantState(handsFreeActive ? "listening" : "idle");
+        };
         await audio.play();
         return;
       }
 
       if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        suppressMicRef.current = false;
         setError("Voice playback is not available on this device.");
         return;
       }
@@ -296,14 +391,21 @@ export default function CheckinPage() {
       if (preferredVoice) utterance.voice = preferredVoice;
       utterance.rate = 0.98;
       utterance.pitch = 1.04;
-      utterance.onend = () => setAssistantState("idle");
-      utterance.onerror = () => setAssistantState("idle");
+      utterance.onend = () => {
+        suppressMicRef.current = false;
+        setAssistantState(handsFreeActive ? "listening" : "idle");
+      };
+      utterance.onerror = () => {
+        suppressMicRef.current = false;
+        setAssistantState(handsFreeActive ? "listening" : "idle");
+      };
       window.speechSynthesis.speak(utterance);
     } catch {
+      suppressMicRef.current = false;
       setAssistantState("idle");
       setError("Voice playback could not be started.");
     }
-  }
+  }, [handsFreeActive]);
 
   function sendUtteranceToAssistant(transcript: string, field: MergedField | null) {
     const socket = assistantSocketRef.current;
@@ -316,10 +418,11 @@ export default function CheckinPage() {
         transcript,
         pace: paceMode,
         field_id: field.field_id,
+        field_ids: assistantPlan?.field_ids?.length ? assistantPlan.field_ids : [field.field_id],
         field_label: field.label,
-        question: questionPrompt(field),
-        help_text: questionHelp(field),
-        remaining_labels: missingFields.map((item) => item.label),
+        question: assistantPromptFor(field),
+        help_text: assistantHelpFor(field),
+        remaining_fields: missingFields.map((item) => ({ field_id: item.field_id, label: item.label, type: item.type })),
       })
     );
   }
@@ -333,6 +436,21 @@ export default function CheckinPage() {
     socket.onopen = () => {
       setAssistantReady(true);
       socket.send(JSON.stringify({ type: "ping" }));
+      if (voiceGuide && guideField) {
+        socket.send(
+          JSON.stringify({
+            type: "context",
+            visit_id,
+            pace: paceMode,
+            current_field_id: guideField.field_id,
+            remaining_fields: missingFields.map((field) => ({
+              field_id: field.field_id,
+              label: field.label,
+              type: field.type,
+            })),
+          })
+        );
+      }
     };
     socket.onclose = () => {
       setAssistantReady(false);
@@ -347,10 +465,51 @@ export default function CheckinPage() {
           setAssistantReady(true);
           return;
         }
+        if (payload.type === "plan") {
+          setAssistantPlan({
+            field_ids: payload.field_ids,
+            prompt: payload.prompt,
+            help_text: payload.help_text,
+            speed_hint: payload.speed_hint,
+          });
+          return;
+        }
         if (payload.type === "assistant") {
+          if (payload.transcript?.trim()) {
+            setLiveTranscript(payload.transcript.trim());
+          }
+          const pending = pendingVoiceCaptureRef.current;
+          if (payload.transcript?.trim() && (handsFreeActive || pending?.echoPatient)) {
+            setVoiceMessages((current) => [...current, { role: "patient", text: payload.transcript.trim() }]);
+          }
           setVoiceMessages((current) => [...current, { role: "assistant", text: payload.reply }]);
+          updateAnswersFromAssistant(payload.extracted_answers || {});
+
+          if (pending && payload.transcript?.trim()) {
+            pending.onText(payload.transcript.trim());
+            if (!Object.keys(payload.extracted_answers || {}).length && pending.field) {
+              const fallbackFieldId = pending.field.field_id;
+              setAnswers((prev) => ({ ...prev, [fallbackFieldId]: payload.transcript.trim() }));
+            }
+          }
+
+          const consumed = payload.consumed_field_ids?.length
+            ? payload.consumed_field_ids
+            : Object.keys(payload.extracted_answers || {});
+          if ((handsFreeActive || pending?.autoAdvance) && consumed.length) {
+            setGuideIndex((current) => Math.min(missingFields.length - 1, current + Math.max(1, consumed.length)));
+          } else if ((handsFreeActive || pending?.autoAdvance) && missingFields.length > 1) {
+            setGuideIndex((current) => Math.min(missingFields.length - 1, current + 1));
+          }
+
+          if (pending && !handsFreeActive) {
+            stopBrowserAudioStream();
+            pendingVoiceCaptureRef.current = null;
+          }
           if (paceMode === "guided" || payload.should_repeat || payload.speed_hint === "slow") {
             void speakText(payload.reply);
+          } else {
+            setAssistantState(handsFreeActive ? "listening" : "idle");
           }
           return;
         }
@@ -358,8 +517,10 @@ export default function CheckinPage() {
           setLiveTranscript(payload.transcript);
           return;
         }
-        if (payload.type === "final") {
-          setLiveTranscript(payload.transcript);
+        if (payload.type === "error") {
+          if (handsFreeActive) {
+            setAssistantState("listening");
+          }
           return;
         }
       } catch {
@@ -368,7 +529,70 @@ export default function CheckinPage() {
     };
   }
 
+  async function startBrowserAudioStream(activeFieldId: string) {
+    ensureAssistantSocket();
+    if (mediaStreamRef.current && audioContextRef.current && processorRef.current) {
+      setListeningField(activeFieldId);
+      setAssistantState("listening");
+      return true;
+    }
+
+    try {
+      recognitionRef.current?.stop();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+      mediaStreamRef.current = stream;
+      audioContextRef.current = audioContext;
+      sourceNodeRef.current = source;
+      processorRef.current = processor;
+
+      setAssistantState("listening");
+      setListeningField(activeFieldId);
+      setLiveTranscript("");
+
+      processor.onaudioprocess = (event) => {
+        const socket = assistantSocketRef.current;
+        if (!socket || socket.readyState !== WebSocket.OPEN || suppressMicRef.current) return;
+        const input = event.inputBuffer.getChannelData(0);
+        const downsampled = downsampleBuffer(input, audioContext.sampleRate, 16000);
+        const pcm = floatTo16BitPCM(downsampled);
+        socket.send(pcm);
+      };
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+      return true;
+    } catch {
+      setError("Live microphone streaming is not available. Falling back to local dictation.");
+      return false;
+    }
+  }
+
   function startDictation(fieldId: string, onText: (text: string) => void, options?: { autoAdvance?: boolean; echoPatient?: boolean; field?: MergedField | null }) {
+    const field = options?.field ?? null;
+    ensureAssistantSocket();
+    syncAssistantContext(field);
+
+    if (typeof navigator.mediaDevices?.getUserMedia === "function" && assistantSocketRef.current) {
+      void (async () => {
+        const started = await startBrowserAudioStream(fieldId);
+        if (started) {
+          pendingVoiceCaptureRef.current = {
+            fieldId,
+            onText,
+            autoAdvance: options?.autoAdvance,
+            echoPatient: options?.echoPatient,
+            field,
+          };
+          return;
+        }
+      })();
+      return;
+    }
+
     const ctor = (window as Window & { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition
       || (window as Window & { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
     if (!ctor) {
@@ -394,7 +618,7 @@ export default function CheckinPage() {
             { role: "patient", text: transcript },
           ]);
         }
-        sendUtteranceToAssistant(transcript, options?.field ?? null);
+        sendUtteranceToAssistant(transcript, field);
         if (options?.autoAdvance) {
           window.setTimeout(() => {
             setGuideIndex((current) => Math.min(missingFields.length - 1, current + 1));
@@ -416,6 +640,26 @@ export default function CheckinPage() {
     setReviewConfirmed((current) => ({ ...current, [fieldId]: true }));
   }
 
+  const syncAssistantContext = useCallback((targetField: MergedField | null = guideField) => {
+    const socket = assistantSocketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN || !targetField) {
+      return;
+    }
+    socket.send(
+      JSON.stringify({
+        type: "context",
+        visit_id,
+        pace: paceMode,
+        current_field_id: targetField.field_id,
+        remaining_fields: missingFields.map((field) => ({
+          field_id: field.field_id,
+          label: field.label,
+          type: field.type,
+        })),
+      })
+    );
+  }, [guideField, missingFields, paceMode, visit_id]);
+
   function startVoiceAssistant() {
     ensureAssistantSocket();
     setVoiceGuide(true);
@@ -426,7 +670,7 @@ export default function CheckinPage() {
     const intro = paceMode === "quick"
       ? "Hi, I’m your PrelimMD assistant. I’ll keep this fast and only speak when it helps."
       : "Hi, I’m your PrelimMD assistant. I’ll walk through the remaining questions one at a time. You can answer by voice or type if you prefer.";
-    const firstQuestion = questionPrompt(firstField);
+    const firstQuestion = assistantPromptFor(firstField);
     lastAskedFieldRef.current = firstField.field_id;
     setVoiceMessages([
       { role: "assistant", text: intro },
@@ -437,18 +681,66 @@ export default function CheckinPage() {
     }
   }
 
+  const stopHandsFreeMode = useCallback(() => {
+    setHandsFreeActive(false);
+    pendingVoiceCaptureRef.current = null;
+    stopBrowserAudioStream();
+  }, [stopBrowserAudioStream]);
+
+  function startHandsFreeMode() {
+    const firstField = missingFields[0];
+    if (!firstField) return;
+    startVoiceAssistant();
+    lastAskedFieldRef.current = null;
+    pendingVoiceCaptureRef.current = null;
+    setHandsFreeActive(true);
+    void (async () => {
+      const started = await startBrowserAudioStream(firstField.field_id);
+      if (!started) {
+        setHandsFreeActive(false);
+      }
+    })();
+  }
+
   const askCurrentGuideQuestion = useCallback((field: MergedField) => {
-    const prompt = questionPrompt(field);
+    const prompt = assistantPromptFor(field);
     setVoiceMessages((current) => [...current, { role: "assistant", text: prompt }]);
     void speakText(prompt);
-  }, []);
+  }, [assistantPromptFor, speakText]);
+
+  useEffect(() => {
+    if (!voiceGuide || !guideField) return;
+    syncAssistantContext(guideField);
+  }, [guideField, syncAssistantContext, voiceGuide]);
+
+  useEffect(() => {
+    if (!voiceGuide && handsFreeActive) {
+      stopHandsFreeMode();
+    }
+  }, [handsFreeActive, stopHandsFreeMode, voiceGuide]);
 
   useEffect(() => {
     if (!voiceGuide || !guideField) return;
     if (lastAskedFieldRef.current === guideField.field_id) return;
     lastAskedFieldRef.current = guideField.field_id;
-    askCurrentGuideQuestion(guideField);
-  }, [askCurrentGuideQuestion, guideField, voiceGuide]);
+    if (handsFreeActive || paceMode === "guided") {
+      askCurrentGuideQuestion(guideField);
+    }
+  }, [askCurrentGuideQuestion, guideField, handsFreeActive, paceMode, voiceGuide]);
+
+  useEffect(() => {
+    if (!handsFreeActive || !guideField) return;
+    setListeningField(guideField.field_id);
+    if (assistantState !== "speaking" && assistantState !== "thinking") {
+      setAssistantState("listening");
+    }
+  }, [assistantState, guideField, handsFreeActive]);
+
+  useEffect(() => {
+    if (handsFreeActive && missingFields.length === 0) {
+      stopHandsFreeMode();
+    }
+  }, [handsFreeActive, missingFields.length, stopHandsFreeMode]);
 
   async function handleSaveAndContinue() {
     setBusy(true);
@@ -557,7 +849,7 @@ export default function CheckinPage() {
         <div className="panel">
           <h2>Complete The Remaining Questions</h2>
           <p style={{ marginBottom: "1.25rem" }}>
-            Every remaining question is listed below. You can type, tap the speaker to hear a question, or use the microphone to dictate your answer.
+            Every remaining question is listed below. You can type, tap the speaker to hear a question, use the microphone for one answer, or start hands-free call mode and answer naturally.
           </p>
 
           <div className="voice-assistant-card">
@@ -577,13 +869,20 @@ export default function CheckinPage() {
               <span className="pace-status">{assistantReady ? "Live assistant connected" : "Live assistant will connect when started"}</span>
             </div>
             <div className="btn-row">
+              <button
+                className={`btn ${handsFreeActive ? "btn-primary" : "btn-secondary"}`}
+                type="button"
+                onClick={() => (handsFreeActive ? stopHandsFreeMode() : startHandsFreeMode())}
+              >
+                {handsFreeActive ? "Stop hands-free call mode" : "Start hands-free call mode"}
+              </button>
               <button className="btn btn-secondary" type="button" onClick={() => (voiceGuide ? setVoiceGuide(false) : startVoiceAssistant())}>
-                {voiceGuide ? "Hide assistant" : "Start voice assistant"}
+                {voiceGuide ? "Hide assistant panel" : "Open assistant panel"}
               </button>
               <button
                 className="btn btn-secondary"
                 type="button"
-                onClick={() => speakText(missingFields.map((field, index) => `Question ${index + 1}. ${questionPrompt(field)}`).join(" "))}
+                onClick={() => speakText(missingFields.map((field, index) => `Question ${index + 1}. ${assistantPromptFor(field)}`).join(" "))}
               >
                 Read all questions
               </button>
@@ -601,12 +900,13 @@ export default function CheckinPage() {
                   </div>
                   <div>
                     <div className="voice-guide-step">Question {guideIndex + 1} of {missingFields.length}</div>
-                    <div className="voice-guide-question">{questionPrompt(guideField)}</div>
+                    <div className="voice-guide-question">{assistantPromptFor(guideField)}</div>
                     <div className="voice-guide-status">
+                      {handsFreeActive ? "Hands-free call mode is on. Just answer naturally after each prompt." : null}
                       {assistantState === "speaking" ? "Assistant is speaking..." : null}
                       {assistantState === "listening" ? "Assistant is listening..." : null}
                       {assistantState === "thinking" ? "Assistant is saving your answer..." : null}
-                      {assistantState === "idle" ? "Assistant is ready." : null}
+                      {assistantState === "idle" && !handsFreeActive ? "Assistant is ready." : null}
                     </div>
                     {liveTranscript ? <div className="voice-live-transcript">Heard: {liveTranscript}</div> : null}
                   </div>
@@ -622,12 +922,13 @@ export default function CheckinPage() {
                   <button className="btn btn-secondary" type="button" onClick={() => askCurrentGuideQuestion(guideField)}>
                     Ask again
                   </button>
-                  <button className="btn btn-secondary" type="button" onClick={() => speakText(questionHelp(guideField))}>
+                  <button className="btn btn-secondary" type="button" onClick={() => speakText(assistantHelpFor(guideField))}>
                     Explain question
                   </button>
                   <button
                     className="btn btn-primary"
                     type="button"
+                    disabled={handsFreeActive}
                     onClick={() =>
                       startDictation(
                         guideField.field_id,
@@ -636,7 +937,7 @@ export default function CheckinPage() {
                       )
                     }
                   >
-                    {listeningField === guideField.field_id ? "Listening..." : "Answer by voice"}
+                    {handsFreeActive ? "Hands-free is active" : listeningField === guideField.field_id ? "Listening..." : "Answer by voice"}
                   </button>
                   <button className="btn btn-secondary" type="button" onClick={() => setGuideIndex((current) => Math.max(0, current - 1))} disabled={guideIndex === 0}>
                     Previous
