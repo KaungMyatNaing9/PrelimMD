@@ -394,6 +394,7 @@ def get_checkin_forms(visit_id: str):
                     source=pf.source,
                     last_confirmed_at=pf.last_confirmed_at,
                     needs_confirmation=True,
+                    is_stale=pf.is_stale,
                     is_missing=False,
                 )
                 total_needs_confirmation += 1

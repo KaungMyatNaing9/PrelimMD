@@ -158,6 +158,7 @@ class PrefilledField(BaseModel):
     confidence: float
     needs_review: bool = False
     last_confirmed_at: Optional[str] = None
+    is_stale: bool = False
 
 
 class MissingField(BaseModel):
@@ -327,6 +328,7 @@ class CheckInField(BaseModel):
     prefilled_value: Optional[Any] = None
     source: Optional[str] = None        # "ehr" | "patient_call" | None
     last_confirmed_at: Optional[str] = None
+    is_stale: bool = False
     needs_confirmation: bool = False
     is_missing: bool = False
 

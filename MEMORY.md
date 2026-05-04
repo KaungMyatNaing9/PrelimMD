@@ -14,6 +14,37 @@ This file records decisions, repo-state changes, and context that are not obviou
 
 ## 2026-05-04 — Normalized Reusable History And Patient Check-In Flow Upgrade
 
+## 2026-05-04 — Freshness Policy And Intake Progress Refinement
+
+### What changed
+
+- Added a real staleness policy to backend prefill:
+  - demographics age out slowly
+  - contact / insurance fields age out sooner
+  - medications / allergies / conditions age out fastest
+- `PrefilledField` / patient kiosk field payloads now mark older reused values with `is_stale`.
+- Patient check-in now requires explicit revalidation of stale reused values before continuing.
+- Patient check-in voice flow was upgraded from a simple reader into a more conversational in-browser assistant:
+  - better phrasing per question
+  - contextual “explain this question” help
+  - visible assistant transcript bubbles
+  - more natural browser voice selection
+- Staff portal language was shifted away from “Call Schedule” to `Intake Progress`.
+- Visit workspace now shows all stored templates as selectable, while still tagging department-relevant suggestions.
+- Staff portal status visibility now leans on actual visit state, including `checked_in` after patient signature.
+
+### Decisions made
+
+- Treat historical patient-confirmed data as reusable, but not indefinitely trustworthy.
+- Keep the MVP voice assistant browser-based for now instead of pretending the staff portal has a full outbound-call product.
+- Do not restrict nurse form assignment to department-only templates; suggestion should guide, not block.
+
+### Validation
+
+- `backend/app`: compile passed
+- `frontend/patient-checkin`: lint/build passed
+- `frontend/staff-portal`: lint/build passed
+
 ### What changed
 
 - Added normalized reusable clinical tables:

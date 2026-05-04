@@ -3,12 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  getFollowUpTasks,
   getIntakeOverview,
   getIntakeSessions,
   getPatients,
   getVisits,
-  type FollowUpTask,
   type IntakeOverview,
   type IntakeSession,
   type Patient,
@@ -17,9 +15,10 @@ import {
 
 const STATUS_STYLES: Record<string, string> = {
   Pending: "bg-slate-100 text-slate-700",
-  "Call Scheduled": "bg-sky-100 text-sky-700",
-  "Call Complete": "bg-teal-100 text-teal-700",
+  "Intake Started": "bg-sky-100 text-sky-700",
+  "Intake Complete": "bg-teal-100 text-teal-700",
   Ready: "bg-emerald-100 text-emerald-700",
+  "Checked In": "bg-emerald-100 text-emerald-700",
   Incomplete: "bg-amber-100 text-amber-800",
 };
 
@@ -28,10 +27,11 @@ function sameDay(date: string, today: string) {
 }
 
 function callStatusForVisit(visit: ScheduledVisit, overview?: IntakeOverview, session?: IntakeSession) {
-  if (visit.status === "checked_in" || visit.status === "completed") return "Ready";
+  if (visit.status === "checked_in") return "Checked In";
+  if (visit.status === "completed") return "Ready";
   if (overview && overview.remaining_fields === 0) return "Ready";
-  if (session?.status === "completed") return "Call Complete";
-  if (session) return "Call Scheduled";
+  if (session?.status === "completed") return "Intake Complete";
+  if (session) return "Intake Started";
   if (overview && overview.total_forms > 0) return "Incomplete";
   return "Pending";
 }
@@ -57,18 +57,16 @@ export default function DashboardPage() {
   const [patients, setPatients] = useState<Record<string, Patient>>({});
   const [visits, setVisits] = useState<ScheduledVisit[]>([]);
   const [sessions, setSessions] = useState<IntakeSession[]>([]);
-  const [tasks, setTasks] = useState<FollowUpTask[]>([]);
   const [overviews, setOverviews] = useState<Record<string, IntakeOverview>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const load = useCallback(async (cancelledRef?: { current: boolean }) => {
     try {
-      const [patientData, visitData, sessionData, taskData] = await Promise.all([
+      const [patientData, visitData, sessionData] = await Promise.all([
         getPatients(),
         getVisits(),
         getIntakeSessions(),
-        getFollowUpTasks(),
       ]);
 
       if (cancelledRef?.current) return;
@@ -76,12 +74,20 @@ export default function DashboardPage() {
       setPatients(Object.fromEntries(patientData.map((patient) => [patient.patient_id, patient])));
       setVisits(visitData);
       setSessions(sessionData);
-      setTasks(taskData);
+
+      const relevantVisitIds = new Set([
+        ...visitData
+          .filter((visit) => visit.status === "checked_in" || sameDay(visit.visit_date, new Date().toISOString().slice(0, 10)))
+          .map((visit) => visit.visit_id),
+        ...sessionData
+          .map((session) => session.visit_id)
+          .filter((visitId): visitId is string => Boolean(visitId)),
+      ]);
 
       const overviewPairs = await Promise.all(
-        visitData.map(async (visit) => {
+        Array.from(relevantVisitIds).map(async (visitId) => {
           try {
-            return [visit.visit_id, await getIntakeOverview(visit.visit_id)] as const;
+            return [visitId, await getIntakeOverview(visitId)] as const;
           } catch {
             return null;
           }
@@ -155,24 +161,6 @@ export default function DashboardPage() {
     [overviews, todayVisits]
   );
 
-  const recentResults = useMemo(
-    () =>
-      [...tasks]
-        .filter((task) => task.status === "completed" || task.flags.length > 0 || task.results_summary)
-        .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at))
-        .slice(0, 5),
-    [tasks]
-  );
-
-  const riskAlerts = useMemo(
-    () =>
-      [...tasks]
-        .filter((task) => task.flags.length > 0)
-        .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at))
-        .slice(0, 5),
-    [tasks]
-  );
-
   return (
     <div className="space-y-6">
       {error ? (
@@ -181,7 +169,7 @@ export default function DashboardPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {statCard("Scheduled Today", loading ? 0 : todayVisits.length, "Patients on today’s intake list.", "🗓", "bg-slate-100 text-slate-700")}
-        {statCard("Calls Pending", loading ? 0 : callsPending, "Intake calls currently in progress.", "📞", "bg-sky-100 text-sky-700")}
+        {statCard("Intake Started", loading ? 0 : callsPending, "Visits with active voice or kiosk intake progress.", "🗣", "bg-sky-100 text-sky-700")}
         {statCard("Forms Complete", loading ? 0 : formsComplete, "Visits with no remaining intake fields.", "✓", "bg-teal-100 text-teal-700")}
         {statCard("Ready for Check-in", loading ? 0 : readyForCheckin, "Patients who can move straight to kiosk review.", "⟶", "bg-emerald-100 text-emerald-700")}
       </section>
@@ -190,7 +178,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div>
             <h2 className="text-xl font-semibold text-navy">Today&apos;s Patients</h2>
-            <p className="mt-1 text-sm text-slate">Open the intake workspace to assign forms, prefill, or schedule an AI call.</p>
+            <p className="mt-1 text-sm text-slate">Open the intake workspace to assign forms, run prefill, or send the patient to kiosk review.</p>
           </div>
           <Link href="/patients" className="btn-secondary">
             Manage patients
@@ -241,7 +229,7 @@ export default function DashboardPage() {
                             Select Forms
                           </Link>
                           <Link href={`/calls?visit_id=${visit.visit_id}`} className="btn-primary">
-                            Schedule Call
+                            Intake Progress
                           </Link>
                         </div>
                       </td>
@@ -252,90 +240,6 @@ export default function DashboardPage() {
             </tbody>
           </table>
         </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
-        <div className="card p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-navy">Recent Call Results</h2>
-              <p className="mt-1 text-sm text-slate">Doctor-facing summary of completed or flagged follow-up tasks.</p>
-            </div>
-            <Link href="/risk-alerts" className="btn-secondary">
-              Open alerts
-            </Link>
-          </div>
-
-          <div className="mt-5 space-y-4">
-            {loading ? (
-              <div className="text-sm text-slate">Loading results...</div>
-            ) : recentResults.length === 0 ? (
-              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate">No completed or flagged follow-up calls yet.</div>
-            ) : (
-              recentResults.map((task) => {
-                const patient = patients[task.patient_id];
-                return (
-                  <div key={task.task_id} className="rounded-3xl border border-slate-200 bg-white p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="font-semibold text-navy">
-                          {patient ? `${patient.first_name} ${patient.last_name}` : task.patient_id}
-                        </div>
-                        <div className="mt-1 text-sm text-slate">
-                          {task.scheduled_at.slice(0, 10)} · {task.questions.length} questions
-                        </div>
-                      </div>
-                      <span className={`badge ${task.flags.length ? "bg-rose-100 text-rose-700" : "bg-teal-100 text-teal-700"}`}>
-                        {task.flags.length ? `${task.flags.length} alert${task.flags.length === 1 ? "" : "s"}` : task.status}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm text-slate">
-                      {task.results_summary || "Call record exists, but no AI summary has been stored yet."}
-                    </p>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        <aside className="card p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-navy">Risk Alerts</h2>
-              <p className="mt-1 text-sm text-slate">Patients whose follow-up tasks contain flags for review.</p>
-            </div>
-          </div>
-
-          <div className="mt-5 space-y-4">
-            {loading ? (
-              <div className="text-sm text-slate">Loading alerts...</div>
-            ) : riskAlerts.length === 0 ? (
-              <div className="rounded-2xl bg-teal-soft p-4 text-sm text-slate">No follow-up flags are currently stored in the database.</div>
-            ) : (
-              riskAlerts.map((task) => {
-                const patient = patients[task.patient_id];
-                return (
-                  <div key={task.task_id} className="rounded-3xl border border-rose-200 bg-rose-50 p-4">
-                    <div className="font-semibold text-navy">
-                      {patient ? `${patient.first_name} ${patient.last_name}` : task.patient_id}
-                    </div>
-                    <div className="mt-1 text-sm text-slate">
-                      Last scheduled {task.scheduled_at.slice(0, 10)}
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {task.flags.map((flag) => (
-                        <span key={flag} className="badge bg-white text-rose-700">
-                          {flag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </aside>
       </section>
     </div>
   );

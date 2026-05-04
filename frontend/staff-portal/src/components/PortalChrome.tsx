@@ -8,9 +8,8 @@ import { useEffect, useMemo, useState } from "react";
 const navItems = [
   { href: "/", label: "Dashboard" },
   { href: "/patients", label: "Patients" },
-  { href: "/calls", label: "Call Schedule" },
+  { href: "/calls", label: "Intake Progress" },
   { href: "/forms-library", label: "Forms Library" },
-  { href: "/risk-alerts", label: "Risk Alerts" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -27,8 +26,8 @@ function headerCopy(pathname: string) {
   }
   if (pathname.startsWith("/calls")) {
     return {
-      title: "Call Schedule",
-      subtitle: "Monitor intake calls, completed questions, and patients still needing kiosk follow-up.",
+      title: "Intake Progress",
+      subtitle: "Monitor intake completion, remaining questions, and patients who are ready for kiosk review.",
     };
   }
   if (pathname.startsWith("/forms-library")) {
@@ -37,21 +36,15 @@ function headerCopy(pathname: string) {
       subtitle: "Review reusable templates and upload new PDFs or photos for AI parsing.",
     };
   }
-  if (pathname.startsWith("/risk-alerts")) {
-    return {
-      title: "Risk Alerts",
-      subtitle: "Review follow-up tasks and any flags that need nurse or doctor attention.",
-    };
-  }
   if (pathname.startsWith("/visits/")) {
     return {
       title: "Visit Workspace",
-      subtitle: "Assign forms, generate AI prefill, schedule calls, and hand off to patient check-in.",
+      subtitle: "Assign forms, generate AI prefill, and hand off to patient check-in.",
     };
   }
   return {
     title: "Dashboard",
-    subtitle: "Today’s schedule, intake readiness, call progress, and follow-up risk visibility.",
+    subtitle: "Today’s schedule, intake readiness, and patient check-in status.",
   };
 }
 

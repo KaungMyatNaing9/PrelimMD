@@ -194,7 +194,7 @@ export default function PatientsPage() {
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-teal">Schedule Visit</div>
             <h2 className="mt-2 text-2xl font-semibold text-navy">Create scheduled appointment</h2>
-            <p className="mt-2 text-sm text-slate">After scheduling, the visit workspace opens so forms and pre-visit calls can be assigned.</p>
+            <p className="mt-2 text-sm text-slate">After scheduling, the visit workspace opens so forms can be assigned and prefilled before kiosk check-in.</p>
           </div>
 
           <div className="mt-5 grid gap-4 md:grid-cols-2">

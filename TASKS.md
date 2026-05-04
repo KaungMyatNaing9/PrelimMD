@@ -28,7 +28,7 @@ Last updated: 2026-05-04
 - [x] Staff patient roster page implemented
 - [x] Staff visit queue page implemented
 - [x] Staff visit workflow page implemented
-- [x] Staff call schedule page implemented
+- [x] Staff intake progress page implemented
 - [x] Staff forms library page implemented
 - [x] Staff risk alerts page implemented
 - [x] Staff follow-up list/detail pages implemented
@@ -44,6 +44,10 @@ Last updated: 2026-05-04
 - [x] Patient-side microphone dictation implemented
 - [x] Patient-side guided voice-fill mode implemented
 - [x] Patient-side deduped final review before signature implemented
+- [x] Freshness policy for reused prefill values implemented
+- [x] Stale value revalidation in patient check-in implemented
+- [x] Staff form assignment expanded to all template categories with department suggestions
+- [x] Staff portal intake wording shifted away from call-centric workflow
 - [x] Both frontends updated to use `frontend/images/logo.png`
 - [x] Staff portal rebuilt to remove hydration/runtime issues from nested layouts
 
@@ -75,11 +79,10 @@ Last updated: 2026-05-04
 - [ ] Staff portal: add follow-up response review UI using `/followups/{task_id}/responses`
 - [ ] Staff portal: add report/clinical brief UI using existing report routes
 - [ ] Persist AI engine parsed/prefilled/report caches into Postgres instead of process memory
-- [ ] Add recency rules for historical prefill fields so older patient-confirmed values can be flagged for revalidation
-- [ ] Show stronger freshness/warning states in the UI for stale reused values
+- [ ] Tune stale-age thresholds further with clinic feedback by field class
 - [ ] Staff portal: show clearer success/error states around assign/prefill/schedule actions
 - [ ] Patient check-in: use `visit_id` hint on `/verify` to reduce re-entry friction
-- [ ] Patient check-in: add true voice answer capture instead of read-aloud only
+- [ ] Patient check-in: connect the browser voice assistant to a richer realtime backend agent/avatar stack if needed
 - [ ] Add automated smoke tests for critical backend routes
 - [ ] Add frontend smoke or E2E coverage for the two main flows
 - [ ] Improve build/runtime documentation in root `README.md` and frontend READMEs to match the current app state

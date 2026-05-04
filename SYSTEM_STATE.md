@@ -22,10 +22,9 @@ As of the latest pass, the staff portal navigation/runtime has been rebuilt and 
 2. Staff opens the visit workspace and either assigns an existing template or uploads/scans a new form to create one.
 3. AI prefill runs immediately after assignment and generates:
    - prefilled known fields
-   - remaining call questions for the AI intake call
-4. Staff schedules the AI intake call for the remaining questions.
-5. Patient arrives and self check-in verifies identity, reviews the prefilled form, fills only the missing fields, and signs consent.
-6. The visit status updates to `checked_in` in the staff portal.
+   - remaining conversational follow-up prompts for kiosk or guided voice completion
+4. Patient arrives and self check-in verifies identity, reviews stale/prefilled values, fills only the missing fields, and signs consent.
+5. The visit status updates to `checked_in` in the staff portal.
 
 ---
 
@@ -114,7 +113,6 @@ Staff Portal (Next.js :3000)
   ├─ GET /intake/overview/{visit_id}
   ├─ POST /intake/assign
   ├─ POST /intake/prefill/{visit_id}
-  ├─ POST /intake/schedule-call
   ├─ GET /followups/question-bank
   ├─ GET /followups
   └─ POST /followups/schedule
@@ -148,8 +146,9 @@ Implemented and verified from code:
 
 - Patients API
 - Visits API
-- Intake templates, upload, assignment, prefill, readiness overview, call scheduling
+- Intake templates, upload, assignment, prefill, readiness overview
 - DB-first prefill using patient record, visit record, prior intake sessions, and prior completed forms
+- Freshness/staleness classification for reused patient-confirmed values
 - Patient identity validation
 - Returning-patient kiosk form review and submission
 - New-patient kiosk profile creation
@@ -179,11 +178,12 @@ Implemented behavior:
 - returning-patient identity verification
 - first-time patient profile creation
 - merged prefilled field review/edit across duplicated form fields
+- stale-value revalidation before continuation
 - complete missing-field completion across all remaining questions
 - typed-signature consent submit
 - per-question speaker playback
 - per-question microphone dictation
-- guided voice-fill mode for conversation-style completion
+- guided voice assistant mode with conversational prompts and explanation help
 - final merged review before signature
 
 Validation completed:
@@ -212,11 +212,11 @@ Implemented behavior:
 - scheduled visit queue
 - visit detail workflow
 - assign saved form templates
+- assign any library template regardless of department, with department suggestions highlighted
 - upload/scan new forms from staff side
 - auto-trigger prefill after assignment/upload
 - intake overview display
-- schedule AI intake call
-- call schedule view backed by stored intake sessions
+- intake progress view backed by stored intake sessions
 - forms library view backed by stored templates
 - risk alerts view backed by follow-up flags
 - open patient kiosk link
@@ -247,13 +247,13 @@ Validation completed:
 
 2. There is no auth on either frontend or backend.
 
-3. Patient-side accessibility help is read-aloud only, not full voice answer capture.
+3. Patient-side voice assistance is browser-based and conversational, but not yet a full realtime backend agent/avatar stack.
 
 ### Platform gaps
 
 1. Core workflow data is now stored in Postgres, and completed intake forms are now persisted too, but AI report caches are still process-memory only.
 2. `fhir_service.py` is still mock-only.
-3. Voice scheduling does not yet automatically trigger outbound calls from staff actions.
+3. Voice scheduling still exists in backend routes, but the staff portal MVP now treats voice help as optional guided intake rather than a promised outbound-call workflow.
 4. Build/test automation is minimal.
 
 ### Security gap

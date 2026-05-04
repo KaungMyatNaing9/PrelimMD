@@ -6,6 +6,7 @@ import {
   getCheckinForms,
   signConsent,
   submitCheckin,
+  synthesizeVoice,
   type CheckInField,
   type CheckInFormGroup,
 } from "@/lib/api";
@@ -23,6 +24,7 @@ type BrowserSpeechRecognition = {
 };
 type SpeechRecognitionCtor = new () => BrowserSpeechRecognition;
 type MergedField = CheckInField & { form_names: string[] };
+type VoiceMessage = { role: "assistant" | "patient"; text: string };
 
 const STEP_LABELS = ["Verify", "Review Form", "Complete Fields", "Sign & Submit"];
 const STEP_KEYS: Step[] = ["review", "missing", "sign", "done"];
@@ -68,11 +70,13 @@ function mergeFormGroups(groups: CheckInFormGroup[]): MergedField[] {
       existing.required = existing.required || field.required;
       existing.needs_confirmation = existing.needs_confirmation || field.needs_confirmation;
       existing.is_missing = existing.is_missing && field.is_missing;
+      existing.is_stale = existing.is_stale || field.is_stale;
       existing.form_names = Array.from(new Set([...existing.form_names, group.form_name]));
       if (existing.prefilled_value == null && field.prefilled_value != null) {
         existing.prefilled_value = field.prefilled_value;
         existing.source = field.source;
         existing.last_confirmed_at = field.last_confirmed_at;
+        existing.is_stale = field.is_stale;
       }
       if (!existing.last_confirmed_at && field.last_confirmed_at) {
         existing.last_confirmed_at = field.last_confirmed_at;
@@ -84,13 +88,73 @@ function mergeFormGroups(groups: CheckInFormGroup[]): MergedField[] {
 
 function confirmedLabel(field: MergedField) {
   if (!field.last_confirmed_at) return "";
-  return `Prefilled from prior visit on ${field.last_confirmed_at.slice(0, 10)}`;
+  const date = field.last_confirmed_at.slice(0, 10);
+  return field.is_stale
+    ? `Last confirmed on ${date}. Please re-check before continuing.`
+    : `Prefilled from prior visit on ${date}`;
+}
+
+function questionPrompt(field: MergedField) {
+  switch (field.field_id) {
+    case "full_name":
+      return "Could you tell me your full name as it appears on your records?";
+    case "date_of_birth":
+      return "What is your date of birth?";
+    case "gender":
+      return "How would you like your gender listed on this form?";
+    case "phone":
+      return "What is the best phone number for the clinic to reach you?";
+    case "email":
+      return "What email address should we use for your records?";
+    case "address":
+      return "What is your current home address?";
+    case "insurance_provider":
+      return "Which insurance plan are you using for this visit?";
+    case "insurance_id":
+      return "What is your insurance member ID or policy number?";
+    case "emergency_contact_name":
+      return "Who should we contact in an emergency?";
+    case "emergency_contact_phone":
+      return "What is the best phone number for that emergency contact?";
+    case "emergency_contact_relation":
+      return "What is that person's relationship to you?";
+    case "reason_for_visit":
+      return "In a few words, what brings you in for this visit?";
+    case "current_medications":
+      return "Please tell me about the medications you are currently taking.";
+    case "known_allergies":
+      return "Do you have any allergies we should list for this visit?";
+    case "conditions":
+      return "Are there any medical conditions or diagnoses we should have on this form?";
+    default:
+      return field.label.endsWith("?") ? field.label : `${field.label}?`;
+  }
+}
+
+function questionHelp(field: MergedField) {
+  switch (field.field_id) {
+    case "insurance_id":
+      return "You can usually find this on the front of your insurance card. It may also be called member ID or subscriber ID.";
+    case "current_medications":
+      return "You can say the medication names only, or include dose and how often you take them if you know that.";
+    case "known_allergies":
+      return "You can include medicine allergies, food allergies, or anything that has caused a reaction before.";
+    case "conditions":
+      return "Examples include diabetes, asthma, high blood pressure, or any diagnosis your care team should know about.";
+    case "reason_for_visit":
+      return "A short summary is enough, such as chest pain follow-up, knee pain, or annual physical.";
+    default:
+      return `You can answer in your own words. We will place your response into ${field.label.toLowerCase()}.`;
+  }
 }
 
 export default function CheckinPage() {
   const { visit_id } = useParams<{ visit_id: string }>();
   const router = useRouter();
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const lastAskedFieldRef = useRef<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
 
   const [formGroups, setFormGroups] = useState<CheckInFormGroup[]>([]);
   const [step, setStep] = useState<Step>("review");
@@ -103,6 +167,8 @@ export default function CheckinPage() {
   const [listeningField, setListeningField] = useState<string | null>(null);
   const [guideIndex, setGuideIndex] = useState(0);
   const [voiceGuide, setVoiceGuide] = useState(false);
+  const [reviewConfirmed, setReviewConfirmed] = useState<Record<string, boolean>>({});
+  const [voiceMessages, setVoiceMessages] = useState<VoiceMessage[]>([]);
 
   useEffect(() => {
     if (!visit_id) return;
@@ -116,6 +182,12 @@ export default function CheckinPage() {
     return () => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
       }
       recognitionRef.current?.stop();
     };
@@ -150,23 +222,62 @@ export default function CheckinPage() {
     [missingFields, currentValueFor]
   );
   const guideField = missingFields[guideIndex] ?? null;
+  const staleFields = useMemo(
+    () => reviewFields.filter((field) => field.is_stale),
+    [reviewFields]
+  );
+  const pendingRevalidations = useMemo(
+    () =>
+      staleFields.filter((field) => {
+        const currentValue = currentValueFor(field).trim();
+        if (!currentValue) return true;
+        return !reviewConfirmed[field.field_id];
+      }).length,
+    [currentValueFor, reviewConfirmed, staleFields]
+  );
   const filledCount = useMemo(
     () => mergedFields.filter((field) => currentValueFor(field).trim()).length,
     [mergedFields, currentValueFor]
   );
 
-  function speakText(text: string) {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      setError("Voice playback is not available on this device.");
-      return;
+  async function speakText(text: string) {
+    try {
+      const { audioUrl, fallbackText } = await synthesizeVoice(text);
+      if (audioUrl) {
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        if (audioUrlRef.current) {
+          URL.revokeObjectURL(audioUrlRef.current);
+        }
+        audioUrlRef.current = audioUrl;
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        await audio.play();
+        return;
+      }
+
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        setError("Voice playback is not available on this device.");
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(fallbackText);
+      const voices = window.speechSynthesis.getVoices();
+      const preferredVoice =
+        voices.find((voice) => /samantha|ava|allison|google us english/i.test(voice.name)) ||
+        voices.find((voice) => /en-us/i.test(voice.lang)) ||
+        voices[0];
+      if (preferredVoice) utterance.voice = preferredVoice;
+      utterance.rate = 0.98;
+      utterance.pitch = 1.04;
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      setError("Voice playback could not be started.");
     }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.96;
-    window.speechSynthesis.speak(utterance);
   }
 
-  function startDictation(fieldId: string, onText: (text: string) => void) {
+  function startDictation(fieldId: string, onText: (text: string) => void, options?: { autoAdvance?: boolean; echoPatient?: boolean }) {
     const ctor = (window as Window & { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition
       || (window as Window & { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
     if (!ctor) {
@@ -180,7 +291,21 @@ export default function CheckinPage() {
     recognition.maxAlternatives = 1;
     recognition.onresult = (event) => {
       const transcript = event.results?.[0]?.[0]?.transcript?.trim() ?? "";
-      if (transcript) onText(transcript);
+      if (transcript) {
+        onText(transcript);
+        if (options?.echoPatient) {
+          setVoiceMessages((current) => [
+            ...current,
+            { role: "patient", text: transcript },
+            { role: "assistant", text: "Thanks. I saved that answer for your form." },
+          ]);
+        }
+        if (options?.autoAdvance) {
+          window.setTimeout(() => {
+            setGuideIndex((current) => Math.min(missingFields.length - 1, current + 1));
+          }, 150);
+        }
+      }
     };
     recognition.onerror = () => setError("Could not transcribe your answer. Please try again or type it.");
     recognition.onend = () => setListeningField((current) => (current === fieldId ? null : current));
@@ -188,6 +313,39 @@ export default function CheckinPage() {
     setListeningField(fieldId);
     recognition.start();
   }
+
+  function markReviewed(fieldId: string) {
+    setReviewConfirmed((current) => ({ ...current, [fieldId]: true }));
+  }
+
+  function startVoiceAssistant() {
+    setVoiceGuide(true);
+    setGuideIndex(0);
+    lastAskedFieldRef.current = null;
+    const firstField = missingFields[0];
+    if (!firstField) return;
+    const intro = "Hi, I’m your PrelimMD assistant. I’ll walk through the remaining questions one at a time. You can answer by voice or type if you prefer.";
+    const firstQuestion = questionPrompt(firstField);
+    lastAskedFieldRef.current = firstField.field_id;
+    setVoiceMessages([
+      { role: "assistant", text: intro },
+      { role: "assistant", text: firstQuestion },
+    ]);
+    void speakText(`${intro} ${firstQuestion}`);
+  }
+
+  const askCurrentGuideQuestion = useCallback((field: MergedField) => {
+    const prompt = questionPrompt(field);
+    setVoiceMessages((current) => [...current, { role: "assistant", text: prompt }]);
+    void speakText(prompt);
+  }, []);
+
+  useEffect(() => {
+    if (!voiceGuide || !guideField) return;
+    if (lastAskedFieldRef.current === guideField.field_id) return;
+    lastAskedFieldRef.current = guideField.field_id;
+    askCurrentGuideQuestion(guideField);
+  }, [askCurrentGuideQuestion, guideField, voiceGuide]);
 
   async function handleSaveAndContinue() {
     setBusy(true);
@@ -266,14 +424,27 @@ export default function CheckinPage() {
                 key={field.field_id}
                 field={field}
                 value={currentValueFor(field)}
-                onCommit={(value) => setEdits((prev) => ({ ...prev, [field.field_id]: value }))}
+                confirmed={Boolean(reviewConfirmed[field.field_id])}
+                onCommit={(value) => {
+                  setEdits((prev) => ({ ...prev, [field.field_id]: value }));
+                  markReviewed(field.field_id);
+                }}
+                onConfirm={() => markReviewed(field.field_id)}
               />
             ))}
           </div>
 
           <div className="btn-row" style={{ marginTop: "2rem" }}>
-            <button className="btn btn-primary" onClick={() => setStep(missingFields.length ? "missing" : "sign")}>
-              {missingFields.length ? `Continue - ${missingFields.length} question${missingFields.length > 1 ? "s" : ""} remaining →` : "Continue to final review →"}
+            <button
+              className="btn btn-primary"
+              onClick={() => setStep(missingFields.length ? "missing" : "sign")}
+              disabled={pendingRevalidations > 0}
+            >
+              {pendingRevalidations > 0
+                ? `Confirm ${pendingRevalidations} stale field${pendingRevalidations > 1 ? "s" : ""} first`
+                : missingFields.length
+                  ? `Continue - ${missingFields.length} question${missingFields.length > 1 ? "s" : ""} remaining →`
+                  : "Continue to final review →"}
             </button>
           </div>
         </div>
@@ -288,33 +459,58 @@ export default function CheckinPage() {
 
           <div className="voice-assistant-card">
             <div>
-              <div className="voice-assistant-title">Guided voice fill</div>
+              <div className="voice-assistant-title">Talk with PrelimMD Assistant</div>
               <div className="voice-assistant-copy">
-                Use the built-in assistant to move through the remaining questions one by one.
+                Start a conversational intake flow. The assistant asks one question at a time, explains confusing fields, and saves your spoken answers into the form.
               </div>
             </div>
             <div className="btn-row">
-              <button className="btn btn-secondary" type="button" onClick={() => setVoiceGuide((current) => !current)}>
-                {voiceGuide ? "Hide voice guide" : "Start voice guide"}
+              <button className="btn btn-secondary" type="button" onClick={() => (voiceGuide ? setVoiceGuide(false) : startVoiceAssistant())}>
+                {voiceGuide ? "Hide assistant" : "Start voice assistant"}
               </button>
-              <button className="btn btn-secondary" type="button" onClick={() => speakText(missingFields.map((field, index) => `Question ${index + 1}. ${field.label}.`).join(" "))}>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => speakText(missingFields.map((field, index) => `Question ${index + 1}. ${questionPrompt(field)}`).join(" "))}
+              >
                 Read all questions
               </button>
             </div>
             {voiceGuide && guideField ? (
               <div className="voice-guide-panel">
-                <div className="voice-guide-step">Question {guideIndex + 1} of {missingFields.length}</div>
-                <div className="voice-guide-question">{guideField.label}</div>
+                <div className="voice-avatar-row">
+                  <div className="voice-avatar">AI</div>
+                  <div>
+                    <div className="voice-guide-step">Question {guideIndex + 1} of {missingFields.length}</div>
+                    <div className="voice-guide-question">{questionPrompt(guideField)}</div>
+                  </div>
+                </div>
+                <div className="voice-transcript">
+                  {voiceMessages.slice(-6).map((message, index) => (
+                    <div key={`${message.role}-${index}`} className={`voice-bubble ${message.role}`}>
+                      {message.text}
+                    </div>
+                  ))}
+                </div>
                 <div className="btn-row">
-                  <button className="btn btn-secondary" type="button" onClick={() => speakText(guideField.label)}>
-                    🔊 Speak
+                  <button className="btn btn-secondary" type="button" onClick={() => askCurrentGuideQuestion(guideField)}>
+                    Ask again
+                  </button>
+                  <button className="btn btn-secondary" type="button" onClick={() => speakText(questionHelp(guideField))}>
+                    Explain question
                   </button>
                   <button
                     className="btn btn-primary"
                     type="button"
-                    onClick={() => startDictation(guideField.field_id, (text) => setAnswers((prev) => ({ ...prev, [guideField.field_id]: text })))}
+                    onClick={() =>
+                      startDictation(
+                        guideField.field_id,
+                        (text) => setAnswers((prev) => ({ ...prev, [guideField.field_id]: text })),
+                        { autoAdvance: true, echoPatient: true }
+                      )
+                    }
                   >
-                    {listeningField === guideField.field_id ? "Listening..." : "🎤 Answer"}
+                    {listeningField === guideField.field_id ? "Listening..." : "Answer by voice"}
                   </button>
                   <button className="btn btn-secondary" type="button" onClick={() => setGuideIndex((current) => Math.max(0, current - 1))} disabled={guideIndex === 0}>
                     Previous
@@ -335,7 +531,7 @@ export default function CheckinPage() {
                 value={currentValueFor(field)}
                 listening={listeningField === field.field_id}
                 onChange={(value) => setAnswers((prev) => ({ ...prev, [field.field_id]: value }))}
-                onSpeak={() => speakText(field.label)}
+                onSpeak={() => speakText(questionPrompt(field))}
                 onDictate={() => startDictation(field.field_id, (text) => setAnswers((prev) => ({ ...prev, [field.field_id]: text })))}
               />
             ))}
@@ -358,6 +554,15 @@ export default function CheckinPage() {
           <p style={{ marginBottom: "1.5rem" }}>
             This is the final merged form view. If something is wrong, go back and change it before signing.
           </p>
+
+          <div className="voice-assistant-card" style={{ marginBottom: "1.5rem" }}>
+            <div>
+              <div className="voice-assistant-title">Final AI-ready review</div>
+              <div className="voice-assistant-copy">
+                This is the completed form data that will be stored for staff review. Use the speaker buttons to hear answers back before signing.
+              </div>
+            </div>
+          </div>
 
           <div className="final-review-grid">
             {mergedFields
@@ -407,11 +612,15 @@ export default function CheckinPage() {
 function FieldReviewCard({
   field,
   value,
+  confirmed,
   onCommit,
+  onConfirm,
 }: {
   field: MergedField;
   value: string;
+  confirmed: boolean;
   onCommit: (v: string) => void;
+  onConfirm: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -453,10 +662,21 @@ function FieldReviewCard({
         <>
           <div className={`field-value${!value ? " empty" : ""}`}>{value || "Not provided"}</div>
           {field.last_confirmed_at ? <div className="review-flag subtle">{confirmedLabel(field)}</div> : null}
-          {field.needs_confirmation ? <div className="review-flag">Please verify this value</div> : null}
-          <button className="btn btn-secondary btn-sm" style={{ marginTop: "0.5rem", width: "fit-content", fontSize: "0.8rem" }} onClick={() => setEditing(true)}>
-            Edit
-          </button>
+          {field.needs_confirmation ? (
+            <div className={`review-flag${field.is_stale ? " stale" : ""}`}>
+              {field.is_stale ? "This saved value is older and must be revalidated." : "Please verify this value"}
+            </div>
+          ) : null}
+          <div className="btn-row" style={{ marginTop: "0.5rem" }}>
+            <button className="btn btn-secondary btn-sm" style={{ width: "fit-content", fontSize: "0.8rem" }} onClick={() => setEditing(true)}>
+              Edit
+            </button>
+            {field.is_stale ? (
+              <button className={`btn btn-sm ${confirmed ? "btn-primary" : "btn-secondary"}`} type="button" style={{ width: "fit-content", fontSize: "0.8rem" }} onClick={onConfirm}>
+                {confirmed ? "Revalidated" : "Confirm current"}
+              </button>
+            ) : null}
+          </div>
         </>
       )}
     </div>

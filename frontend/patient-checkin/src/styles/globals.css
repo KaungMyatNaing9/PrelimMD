@@ -243,6 +243,26 @@ button, input, select, textarea { font: inherit; }
   padding-top: 0.5rem;
 }
 
+.voice-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.voice-avatar {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: white;
+  background: linear-gradient(135deg, #0d9488, #0f766e);
+  box-shadow: 0 12px 28px rgba(13, 148, 136, 0.22);
+}
+
 .voice-guide-step {
   font-size: 0.82rem;
   font-weight: 700;
@@ -254,6 +274,32 @@ button, input, select, textarea { font: inherit; }
 .voice-guide-question {
   font-size: 1.15rem;
   font-weight: 700;
+  color: var(--text);
+}
+
+.voice-transcript {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.voice-bubble {
+  max-width: min(100%, 34rem);
+  padding: 0.8rem 1rem;
+  border-radius: 1.1rem;
+  line-height: 1.5;
+  font-size: 0.96rem;
+}
+
+.voice-bubble.assistant {
+  background: rgba(13, 148, 136, 0.08);
+  border: 1px solid rgba(13, 148, 136, 0.18);
+  color: var(--text);
+}
+
+.voice-bubble.patient {
+  margin-left: auto;
+  background: rgba(15, 43, 60, 0.08);
+  border: 1px solid rgba(15, 43, 60, 0.12);
   color: var(--text);
 }
 
@@ -376,6 +422,10 @@ button, input, select, textarea { font: inherit; }
   display: inline-flex; align-items: center; gap: 0.35rem;
   font-size: 0.75rem; font-weight: 700; color: var(--warning, #8f4e25);
   text-transform: uppercase; letter-spacing: 0.06em;
+}
+
+.review-flag.stale {
+  color: var(--danger);
 }
 .scan-flag {
   display: inline-flex;

@@ -49,6 +49,7 @@ export interface CheckInField {
   prefilled_value?: string | boolean | null;
   source?: string | null;
   last_confirmed_at?: string | null;
+  is_stale?: boolean;
   needs_confirmation: boolean;
   is_missing: boolean;
 }
@@ -142,6 +143,27 @@ export const scanCheckinForm = (visitId: string, file: Blob, filename = "camera-
   formData.append("file", file, filename);
   return postForm<CheckInScanResponse>(`/patient/checkin/${visitId}/scan`, formData);
 };
+
+export async function synthesizeVoice(text: string): Promise<{ audioUrl: string | null; fallbackText: string }> {
+  const res = await fetch(`${BASE}/voice/synthesize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`POST /voice/synthesize → ${res.status}`);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("audio/")) {
+    const blob = await res.blob();
+    return { audioUrl: URL.createObjectURL(blob), fallbackText: text };
+  }
+
+  const payload = (await res.json().catch(() => ({}))) as { text?: string };
+  return { audioUrl: null, fallbackText: payload.text || text };
+}
 
 export const submitCheckin = (visitId: string, answers: Record<string, unknown>) =>
   post(`/patient/checkin/${visitId}/submit`, { answers });

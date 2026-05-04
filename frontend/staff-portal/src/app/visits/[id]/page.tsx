@@ -10,12 +10,10 @@ import {
   getTemplates,
   getVisit,
   getVisitForms,
-  scheduleIntakeCall,
   triggerPrefill,
   uploadTemplate,
   type AssignedForm,
   type FormTemplate,
-  type IntakeCallSchedule,
   type IntakeOverview,
   type Patient,
   type ScheduledVisit,
@@ -53,8 +51,6 @@ export default function VisitDetailPage() {
     description: "",
     category: "custom_intake",
   });
-  const [callTime, setCallTime] = useState("");
-  const [scheduledCall, setScheduledCall] = useState<IntakeCallSchedule | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [message, setMessage] = useState("");
@@ -152,22 +148,6 @@ export default function VisitDetailPage() {
     }
   }
 
-  async function handleScheduleCall() {
-    if (!visit || !callTime) return;
-    setSaving("call");
-    setMessage("");
-    try {
-      const response = await scheduleIntakeCall(visit.visit_id, new Date(callTime).toISOString());
-      setScheduledCall(response);
-      await load();
-      setMessage("AI pre-visit call scheduled.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to schedule AI call.");
-    } finally {
-      setSaving("");
-    }
-  }
-
   if (loading) {
     return <div className="card p-5 text-sm text-slate">Loading visit workspace...</div>;
   }
@@ -192,7 +172,7 @@ export default function VisitDetailPage() {
             </h2>
             <p className="mt-2 max-w-3xl text-sm text-slate">
               Use this screen to assign existing intake templates, upload a paper form or photo,
-              run AI prefill, schedule the pre-visit call, and then send the patient into self check-in.
+              run AI prefill, and then send the patient into self check-in.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -200,7 +180,7 @@ export default function VisitDetailPage() {
               Open Patient Check-in
             </a>
             <Link href="/calls" className="btn-primary">
-              View Call Schedule
+              View Intake Progress
             </Link>
           </div>
         </div>
@@ -229,9 +209,11 @@ export default function VisitDetailPage() {
             </div>
           </div>
           <div className="rounded-3xl bg-slate-50 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate">Call Follow-up</div>
-            <div className="mt-2 font-semibold text-navy">{overview?.call_remaining_fields ?? 0} questions remaining</div>
-            <div className="mt-1 text-sm text-slate">{scheduledCall?.status === "scheduled" ? "Call already scheduled" : "Ready to schedule"}</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate">Visit Status</div>
+            <div className="mt-2 font-semibold text-navy">{visit.status.replace("_", " ")}</div>
+            <div className="mt-1 text-sm text-slate">
+              {visit.status === "checked_in" ? "Patient has finished kiosk review and signature." : `${overview?.remaining_fields ?? 0} kiosk fields still need review`}
+            </div>
           </div>
         </div>
       </section>
@@ -243,13 +225,14 @@ export default function VisitDetailPage() {
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-teal">Select Forms</div>
               <h3 className="mt-2 text-xl font-semibold text-navy">Assign existing templates</h3>
               <p className="mt-2 text-sm text-slate">
-                Suggested forms are based on the visit department and stored templates already in the database.
+                All templates in the library are available here. Suggested options are highlighted based on the visit department, but you can assign any category.
               </p>
             </div>
 
             <div className="mt-5 grid gap-3">
-              {(suggestedTemplates.length ? suggestedTemplates : templates).map((template) => {
+              {templates.map((template) => {
                 const checked = selectedTemplateIds.includes(template.template_id) || assignedTemplateIds.has(template.template_id);
+                const suggested = suggestedTemplates.some((item) => item.template_id === template.template_id);
                 return (
                   <label key={template.template_id} className="flex items-start gap-3 rounded-3xl border border-slate-200 p-4">
                     <input
@@ -267,7 +250,10 @@ export default function VisitDetailPage() {
                       }}
                     />
                     <div className="min-w-0">
-                      <div className="font-semibold text-navy">{template.name}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-semibold text-navy">{template.name}</div>
+                        {suggested ? <span className="badge bg-teal-soft text-navy">Suggested for {visit.department}</span> : null}
+                      </div>
                       <div className="mt-1 text-sm text-slate">{template.description}</div>
                       <div className="mt-2 text-xs uppercase tracking-[0.16em] text-slate">{template.category}</div>
                     </div>
@@ -380,7 +366,7 @@ export default function VisitDetailPage() {
                           </span>
                         ))
                       ) : (
-                        <span className="badge bg-emerald-100 text-emerald-700">No call questions remain</span>
+                        <span className="badge bg-emerald-100 text-emerald-700">No intake follow-up questions remain</span>
                       )}
                     </div>
                   </div>
@@ -395,33 +381,24 @@ export default function VisitDetailPage() {
         <div className="space-y-6">
           <section className="card p-5">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-teal">Schedule Pre-Visit Call</div>
-              <h3 className="mt-2 text-xl font-semibold text-navy">Send remaining questions to AI call flow</h3>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-teal">Intake Progress</div>
+              <h3 className="mt-2 text-xl font-semibold text-navy">What still needs patient review</h3>
+              <p className="mt-2 text-sm text-slate">
+                This MVP keeps the handoff simple: assign forms, let AI prefill what it can, and use the kiosk or voice-guided patient flow for anything still missing.
+              </p>
             </div>
 
-            <div className="mt-5">
-              <label className="field-label">Call date and time</label>
-              <input type="datetime-local" className="field-input" value={callTime} onChange={(event) => setCallTime(event.target.value)} />
-            </div>
-
-            <div className="mt-4">
-              <label className="field-label">Patient phone</label>
-              <input className="field-input" value={patient.phone || ""} disabled />
-            </div>
-
-            <div className="mt-5">
-              <button className="btn-primary" onClick={handleScheduleCall} disabled={saving === "call" || !callTime}>
-                {saving === "call" ? "Scheduling..." : "Schedule AI Call"}
-              </button>
-            </div>
-
-            {scheduledCall ? (
-              <div className="mt-5 rounded-3xl bg-teal-soft p-4 text-sm text-slate">
-                <div className="font-semibold text-navy">Call scheduled</div>
-                <div className="mt-1">Session: {scheduledCall.session_id}</div>
-                <div className="mt-1">{scheduledCall.note}</div>
+            <div className="mt-5 rounded-3xl bg-slate-50 p-4 text-sm text-slate">
+              <div className="font-semibold text-navy">{overview?.remaining_fields ?? 0} fields still need patient confirmation or completion</div>
+              <div className="mt-2">
+                {overview?.call_remaining_fields ?? 0} conversational follow-up prompts are available if the patient uses the guided voice assistant.
               </div>
-            ) : null}
+              <div className="mt-4">
+                <Link href={`/calls?visit_id=${visit.visit_id}`} className="btn-secondary">
+                  Open Intake Progress
+                </Link>
+              </div>
+            </div>
           </section>
 
           <section className="card p-5">

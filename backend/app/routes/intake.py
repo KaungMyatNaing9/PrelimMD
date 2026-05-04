@@ -63,6 +63,46 @@ def _call_safe_missing_fields(prefilled) -> list[MissingField]:
     return [field for field in prefilled.missing_fields if field.field_id not in PHONE_BLOCKLIST]
 
 
+def _value_is_present(value) -> bool:
+    return value not in (None, "", [], {})
+
+
+def _completed_overview(assignment: AssignedForm, template: FormTemplate):
+    form_id = assignment.form_id or assignment.assignment_id
+    completed = ai_engine.get_completed_form(form_id)
+    if not completed:
+        return None
+
+    values = {field.field_id: field.value for field in completed.fields}
+    missing_fields = [
+        MissingField(
+            field_id=field.field_id,
+            label=field.label,
+            question="",
+            type=field.type,
+            required=field.required,
+        )
+        for field in template.fields
+        if not _value_is_present(values.get(field.field_id))
+    ]
+    filled_count = len(template.fields) - len(missing_fields)
+    completion_percent = int((filled_count / len(template.fields)) * 100) if template.fields else 100
+
+    return IntakeFormOverview(
+        assignment_id=assignment.assignment_id,
+        template_id=assignment.template_id,
+        form_name=template.name,
+        status="signed",
+        total_fields=len(template.fields),
+        filled_fields=filled_count,
+        remaining_fields=len(missing_fields),
+        call_remaining_fields=0,
+        completion_percent=completion_percent,
+        remaining_field_labels=[field.label for field in missing_fields],
+        call_questions=[],
+    )
+
+
 def _build_overview(visit_id: str) -> IntakeOverviewResponse:
     visit = store.get_visit(visit_id)
     if not visit:
@@ -84,6 +124,14 @@ def _build_overview(visit_id: str) -> IntakeOverviewResponse:
     for assignment in assignments:
         template = store.get_template(assignment.template_id)
         if not template:
+            continue
+
+        completed_overview = _completed_overview(assignment, template)
+        if completed_overview:
+            total_fields += completed_overview.total_fields
+            filled_fields += completed_overview.filled_fields
+            remaining_fields += completed_overview.remaining_fields
+            forms.append(completed_overview)
             continue
 
         prefilled = _prefilled_for_assignment(assignment, visit.patient_id, template)

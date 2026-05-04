@@ -145,9 +145,48 @@ _QUESTION_TEMPLATES = {
     "known_allergies": "Do you have any known allergies?",
 }
 
+_STALE_DAYS_BY_FIELD = {
+    "full_name": 365,
+    "date_of_birth": 365,
+    "gender": 365,
+    "phone": 180,
+    "email": 180,
+    "address": 120,
+    "insurance_provider": 120,
+    "insurance_id": 120,
+    "emergency_contact_name": 120,
+    "emergency_contact_phone": 120,
+    "emergency_contact_relation": 120,
+    "reason_for_visit": 30,
+    "current_medications": 30,
+    "known_allergies": 60,
+    "conditions": 60,
+}
+
 
 def _normalize_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _is_stale_field(field_key: str, last_confirmed_at: Optional[str]) -> bool:
+    confirmed = _parse_iso_datetime(last_confirmed_at)
+    if not confirmed:
+        return False
+    stale_after_days = _STALE_DAYS_BY_FIELD.get(field_key, 180)
+    age_days = (datetime.now(timezone.utc) - confirmed).days
+    return age_days >= stale_after_days
 
 
 def _format_list(values: Iterable[str]) -> Optional[str]:
@@ -612,13 +651,15 @@ def prefill_from_db(form_schema: "FormSchema", patient_id: str, visit_id: Option
         if val is not None:
             meta = context_meta.get(canonical_key, {})
             source = meta.get("source", "ehr" if canonical_key not in {"reason_for_visit", "current_medications", "known_allergies", "conditions"} else "patient_kiosk")
+            last_confirmed_at = meta.get("last_confirmed_at")
             filled.append(
                 PrefilledField(
                     field_id=field.field_id,
                     value=val,
                     source=source,
                     confidence=float(meta.get("confidence", 0.96 if source == "ehr" else 0.9)),
-                    last_confirmed_at=meta.get("last_confirmed_at"),
+                    last_confirmed_at=last_confirmed_at,
+                    is_stale=_is_stale_field(canonical_key, last_confirmed_at),
                 )
             )
         else:
