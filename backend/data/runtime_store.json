@@ -1,0 +1,1609 @@
+{
+  "patients": {
+    "patient-001": {
+      "patient_id": "patient-001",
+      "first_name": "Jane",
+      "last_name": "Smith",
+      "date_of_birth": "1985-03-14",
+      "gender": "female",
+      "phone": "+15550101",
+      "email": "jane.smith@email.com",
+      "address": "123 Main St, Chicago, IL 60601",
+      "insurance_provider": "BlueCross BlueShield",
+      "insurance_id": "BCB123456789",
+      "emergency_contact_name": "John Smith",
+      "emergency_contact_phone": "+15550102",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-002": {
+      "patient_id": "patient-002",
+      "first_name": "Robert",
+      "last_name": "Johnson",
+      "date_of_birth": "1972-07-22",
+      "gender": "male",
+      "phone": "+15550201",
+      "email": "r.johnson@email.com",
+      "address": "456 Oak Ave, Chicago, IL 60602",
+      "insurance_provider": "Aetna",
+      "insurance_id": "AET987654321",
+      "emergency_contact_name": "Linda Johnson",
+      "emergency_contact_phone": "+15550202",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-003": {
+      "patient_id": "patient-003",
+      "first_name": "Maria",
+      "last_name": "Garcia",
+      "date_of_birth": "1990-11-05",
+      "gender": "female",
+      "phone": "+15550301",
+      "email": "maria.garcia@email.com",
+      "address": "789 Elm St, Chicago, IL 60603",
+      "insurance_provider": "UnitedHealthcare",
+      "insurance_id": "UHC456789123",
+      "emergency_contact_name": "Carlos Garcia",
+      "emergency_contact_phone": "+15550302",
+      "emergency_contact_relation": "Brother"
+    },
+    "patient-004": {
+      "patient_id": "patient-004",
+      "first_name": "David",
+      "last_name": "Kim",
+      "date_of_birth": "1968-09-30",
+      "gender": "male",
+      "phone": "+15550401",
+      "email": "david.kim@email.com",
+      "address": "321 Pine Rd, Chicago, IL 60604",
+      "insurance_provider": "Cigna",
+      "insurance_id": "CIG789456123",
+      "emergency_contact_name": "Susan Kim",
+      "emergency_contact_phone": "+15550402",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-005": {
+      "patient_id": "patient-005",
+      "first_name": "Emily",
+      "last_name": "Chen",
+      "date_of_birth": "1995-02-18",
+      "gender": "female",
+      "phone": "+15550501",
+      "email": "emily.chen@email.com",
+      "address": "654 Maple Dr, Chicago, IL 60605",
+      "insurance_provider": "Humana",
+      "insurance_id": "HUM321654987",
+      "emergency_contact_name": "Wei Chen",
+      "emergency_contact_phone": "+15550502",
+      "emergency_contact_relation": "Father"
+    },
+    "patient-006": {
+      "patient_id": "patient-006",
+      "first_name": "Michael",
+      "last_name": "Brown",
+      "date_of_birth": "1960-06-12",
+      "gender": "male",
+      "phone": "+15550601",
+      "email": null,
+      "address": "987 Cedar Ln, Chicago, IL 60606",
+      "insurance_provider": "Medicare",
+      "insurance_id": "MCR654987321",
+      "emergency_contact_name": "Patricia Brown",
+      "emergency_contact_phone": "+15550602",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-007": {
+      "patient_id": "patient-007",
+      "first_name": "Sarah",
+      "last_name": "Davis",
+      "date_of_birth": "1978-04-25",
+      "gender": "female",
+      "phone": "+15550701",
+      "email": "sarah.davis@email.com",
+      "address": "147 Birch Blvd, Chicago, IL 60607",
+      "insurance_provider": "BlueCross BlueShield",
+      "insurance_id": "BCB741852963",
+      "emergency_contact_name": "Tom Davis",
+      "emergency_contact_phone": "+15550702",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-008": {
+      "patient_id": "patient-008",
+      "first_name": "James",
+      "last_name": "Wilson",
+      "date_of_birth": "1955-08-10",
+      "gender": "male",
+      "phone": "+15550801",
+      "email": "j.wilson@email.com",
+      "address": "258 Walnut Ave, Chicago, IL 60608",
+      "insurance_provider": "Medicare",
+      "insurance_id": "MCR852741963",
+      "emergency_contact_name": "Mary Wilson",
+      "emergency_contact_phone": "+15550802",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-009": {
+      "patient_id": "patient-009",
+      "first_name": "Ashley",
+      "last_name": "Martinez",
+      "date_of_birth": "2001-12-03",
+      "gender": "female",
+      "phone": "+15550901",
+      "email": "a.martinez@email.com",
+      "address": "369 Spruce St, Chicago, IL 60609",
+      "insurance_provider": "Aetna",
+      "insurance_id": "AET963852741",
+      "emergency_contact_name": "Rosa Martinez",
+      "emergency_contact_phone": "+15550902",
+      "emergency_contact_relation": "Mother"
+    },
+    "patient-010": {
+      "patient_id": "patient-010",
+      "first_name": "Christopher",
+      "last_name": "Lee",
+      "date_of_birth": "1983-01-17",
+      "gender": "male",
+      "phone": "+15551001",
+      "email": "chris.lee@email.com",
+      "address": "741 Poplar Ct, Chicago, IL 60610",
+      "insurance_provider": "UnitedHealthcare",
+      "insurance_id": "UHC147258369",
+      "emergency_contact_name": "Jenny Lee",
+      "emergency_contact_phone": "+15551002",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-011": {
+      "patient_id": "patient-011",
+      "first_name": "Amanda",
+      "last_name": "Thompson",
+      "date_of_birth": "1967-09-28",
+      "gender": "female",
+      "phone": "+15551101",
+      "email": "a.thompson@email.com",
+      "address": "852 Ash Rd, Chicago, IL 60611",
+      "insurance_provider": "Cigna",
+      "insurance_id": "CIG258369147",
+      "emergency_contact_name": "Frank Thompson",
+      "emergency_contact_phone": "+15551102",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-012": {
+      "patient_id": "patient-012",
+      "first_name": "Daniel",
+      "last_name": "Harris",
+      "date_of_birth": "1991-05-14",
+      "gender": "male",
+      "phone": "+15551201",
+      "email": "d.harris@email.com",
+      "address": "963 Willow Way, Chicago, IL 60612",
+      "insurance_provider": "Humana",
+      "insurance_id": "HUM369147258",
+      "emergency_contact_name": "Barbara Harris",
+      "emergency_contact_phone": "+15551202",
+      "emergency_contact_relation": "Mother"
+    },
+    "patient-013": {
+      "patient_id": "patient-013",
+      "first_name": "Jessica",
+      "last_name": "White",
+      "date_of_birth": "1975-11-22",
+      "gender": "female",
+      "phone": "+15551301",
+      "email": "j.white@email.com",
+      "address": "174 Hickory Ln, Chicago, IL 60613",
+      "insurance_provider": "BlueCross BlueShield",
+      "insurance_id": "BCB963147852",
+      "emergency_contact_name": "Mark White",
+      "emergency_contact_phone": "+15551302",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-014": {
+      "patient_id": "patient-014",
+      "first_name": "Matthew",
+      "last_name": "Jackson",
+      "date_of_birth": "1988-03-07",
+      "gender": "male",
+      "phone": "+15551401",
+      "email": "m.jackson@email.com",
+      "address": "285 Chestnut Ave, Chicago, IL 60614",
+      "insurance_provider": "Aetna",
+      "insurance_id": "AET174285396",
+      "emergency_contact_name": "Carol Jackson",
+      "emergency_contact_phone": "+15551402",
+      "emergency_contact_relation": "Mother"
+    },
+    "patient-015": {
+      "patient_id": "patient-015",
+      "first_name": "Elizabeth",
+      "last_name": "Taylor",
+      "date_of_birth": "1952-07-16",
+      "gender": "female",
+      "phone": "+15551501",
+      "email": null,
+      "address": "396 Sycamore Dr, Chicago, IL 60615",
+      "insurance_provider": "Medicare",
+      "insurance_id": "MCR285396174",
+      "emergency_contact_name": "George Taylor",
+      "emergency_contact_phone": "+15551502",
+      "emergency_contact_relation": "Son"
+    },
+    "patient-016": {
+      "patient_id": "patient-016",
+      "first_name": "Joshua",
+      "last_name": "Anderson",
+      "date_of_birth": "2003-06-30",
+      "gender": "male",
+      "phone": "+15551601",
+      "email": "j.anderson@email.com",
+      "address": "417 Magnolia St, Chicago, IL 60616",
+      "insurance_provider": "UnitedHealthcare",
+      "insurance_id": "UHC396285174",
+      "emergency_contact_name": "Karen Anderson",
+      "emergency_contact_phone": "+15551602",
+      "emergency_contact_relation": "Mother"
+    },
+    "patient-017": {
+      "patient_id": "patient-017",
+      "first_name": "Stephanie",
+      "last_name": "Thomas",
+      "date_of_birth": "1980-10-11",
+      "gender": "female",
+      "phone": "+15551701",
+      "email": "s.thomas@email.com",
+      "address": "528 Dogwood Blvd, Chicago, IL 60617",
+      "insurance_provider": "Cigna",
+      "insurance_id": "CIG417528639",
+      "emergency_contact_name": "Kevin Thomas",
+      "emergency_contact_phone": "+15551702",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-018": {
+      "patient_id": "patient-018",
+      "first_name": "Ryan",
+      "last_name": "Moore",
+      "date_of_birth": "1964-02-28",
+      "gender": "male",
+      "phone": "+15551801",
+      "email": "r.moore@email.com",
+      "address": "639 Redwood Rd, Chicago, IL 60618",
+      "insurance_provider": "Humana",
+      "insurance_id": "HUM528639417",
+      "emergency_contact_name": "Diane Moore",
+      "emergency_contact_phone": "+15551802",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-019": {
+      "patient_id": "patient-019",
+      "first_name": "Nicole",
+      "last_name": "Martin",
+      "date_of_birth": "1993-08-19",
+      "gender": "female",
+      "phone": "+15551901",
+      "email": "n.martin@email.com",
+      "address": "741 Cypress Ct, Chicago, IL 60619",
+      "insurance_provider": "BlueCross BlueShield",
+      "insurance_id": "BCB639417528",
+      "emergency_contact_name": "Helen Martin",
+      "emergency_contact_phone": "+15551902",
+      "emergency_contact_relation": "Mother"
+    },
+    "patient-020": {
+      "patient_id": "patient-020",
+      "first_name": "Brandon",
+      "last_name": "Clark",
+      "date_of_birth": "1970-04-05",
+      "gender": "male",
+      "phone": "+15552001",
+      "email": "b.clark@email.com",
+      "address": "852 Juniper Ave, Chicago, IL 60620",
+      "insurance_provider": "Aetna",
+      "insurance_id": "AET528417639",
+      "emergency_contact_name": "Tina Clark",
+      "emergency_contact_phone": "+15552002",
+      "emergency_contact_relation": "Spouse"
+    },
+    "patient-3f8c4ad2": {
+      "patient_id": "patient-3f8c4ad2",
+      "first_name": "patient",
+      "last_name": "last",
+      "date_of_birth": "2026-05-19",
+      "gender": "female",
+      "phone": "708-456-3004",
+      "email": "email@something.com",
+      "address": "address",
+      "insurance_provider": null,
+      "insurance_id": null,
+      "emergency_contact_name": null,
+      "emergency_contact_phone": null,
+      "emergency_contact_relation": null
+    },
+    "patient-067338f0": {
+      "patient_id": "patient-067338f0",
+      "first_name": "test",
+      "last_name": "last",
+      "date_of_birth": "2026-05-05",
+      "gender": "male",
+      "phone": "s",
+      "email": "s@s",
+      "address": "s",
+      "insurance_provider": null,
+      "insurance_id": null,
+      "emergency_contact_name": null,
+      "emergency_contact_phone": null,
+      "emergency_contact_relation": null
+    },
+    "patient-f76e07f7": {
+      "patient_id": "patient-f76e07f7",
+      "first_name": "test",
+      "last_name": "last",
+      "date_of_birth": "2026-05-13",
+      "gender": "male",
+      "phone": "h",
+      "email": "gg@h",
+      "address": "54",
+      "insurance_provider": null,
+      "insurance_id": null,
+      "emergency_contact_name": null,
+      "emergency_contact_phone": null,
+      "emergency_contact_relation": null
+    }
+  },
+  "visits": {
+    "visit-001": {
+      "visit_id": "visit-001",
+      "patient_id": "patient-001",
+      "visit_date": "2026-04-05",
+      "visit_time": "09:30",
+      "provider_name": "Dr. Sarah Chen",
+      "department": "Cardiology",
+      "reason": "Annual cardiac check-up",
+      "status": "completed",
+      "notes": null
+    },
+    "visit-002": {
+      "visit_id": "visit-002",
+      "patient_id": "patient-002",
+      "visit_date": "2026-04-08",
+      "visit_time": "14:00",
+      "provider_name": "Dr. James Williams",
+      "department": "General Practice",
+      "reason": "Cholesterol management review",
+      "status": "completed",
+      "notes": null
+    },
+    "visit-003": {
+      "visit_id": "visit-003",
+      "patient_id": "patient-003",
+      "visit_date": "2026-04-10",
+      "visit_time": "11:15",
+      "provider_name": "Dr. James Williams",
+      "department": "General Practice",
+      "reason": "Post-op follow-up \u2014 appendectomy",
+      "status": "completed",
+      "notes": null
+    },
+    "visit-004": {
+      "visit_id": "visit-004",
+      "patient_id": "patient-004",
+      "visit_date": "2026-04-12",
+      "visit_time": "10:00",
+      "provider_name": "Dr. Sarah Chen",
+      "department": "Cardiology",
+      "reason": "Chest pain evaluation",
+      "status": "completed",
+      "notes": null
+    },
+    "visit-005": {
+      "visit_id": "visit-005",
+      "patient_id": "patient-005",
+      "visit_date": "2026-04-15",
+      "visit_time": "13:30",
+      "provider_name": "Dr. Lisa Nguyen",
+      "department": "Neurology",
+      "reason": "Migraine management",
+      "status": "completed",
+      "notes": null
+    },
+    "visit-006": {
+      "visit_id": "visit-006",
+      "patient_id": "patient-006",
+      "visit_date": "2026-04-18",
+      "visit_time": "08:45",
+      "provider_name": "Dr. Robert Anderson",
+      "department": "Orthopedics",
+      "reason": "Knee replacement follow-up",
+      "status": "completed",
+      "notes": null
+    },
+    "visit-007": {
+      "visit_id": "visit-007",
+      "patient_id": "patient-007",
+      "visit_date": "2026-04-21",
+      "visit_time": "15:00",
+      "provider_name": "Dr. Marcus Johnson",
+      "department": "General Practice",
+      "reason": "Annual physical exam",
+      "status": "completed",
+      "notes": null
+    },
+    "visit-008": {
+      "visit_id": "visit-008",
+      "patient_id": "patient-008",
+      "visit_date": "2026-04-24",
+      "visit_time": "09:15",
+      "provider_name": "Dr. Robert Anderson",
+      "department": "Orthopedics",
+      "reason": "Hip pain evaluation",
+      "status": "completed",
+      "notes": null
+    },
+    "visit-009": {
+      "visit_id": "visit-009",
+      "patient_id": "patient-009",
+      "visit_date": "2026-04-27",
+      "visit_time": "10:45",
+      "provider_name": "Dr. Marcus Johnson",
+      "department": "General Practice",
+      "reason": "Routine wellness check",
+      "status": "completed",
+      "notes": null
+    },
+    "visit-010": {
+      "visit_id": "visit-010",
+      "patient_id": "patient-010",
+      "visit_date": "2026-04-29",
+      "visit_time": "14:30",
+      "provider_name": "Dr. Sarah Chen",
+      "department": "Cardiology",
+      "reason": "Palpitation follow-up",
+      "status": "completed",
+      "notes": null
+    },
+    "visit-011": {
+      "visit_id": "visit-011",
+      "patient_id": "patient-001",
+      "visit_date": "2026-05-05",
+      "visit_time": "09:30",
+      "provider_name": "Dr. Sarah Chen",
+      "department": "Cardiology",
+      "reason": "Post-medication cardiac review",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-012": {
+      "visit_id": "visit-012",
+      "patient_id": "patient-002",
+      "visit_date": "2026-05-06",
+      "visit_time": "14:00",
+      "provider_name": "Dr. James Williams",
+      "department": "General Practice",
+      "reason": "Diabetes management review",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-013": {
+      "visit_id": "visit-013",
+      "patient_id": "patient-003",
+      "visit_date": "2026-05-07",
+      "visit_time": "11:15",
+      "provider_name": "Dr. Marcus Johnson",
+      "department": "General Practice",
+      "reason": "Blood pressure management",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-014": {
+      "visit_id": "visit-014",
+      "patient_id": "patient-004",
+      "visit_date": "2026-05-08",
+      "visit_time": "10:00",
+      "provider_name": "Dr. Sarah Chen",
+      "department": "Cardiology",
+      "reason": "Stress test results review",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-015": {
+      "visit_id": "visit-015",
+      "patient_id": "patient-011",
+      "visit_date": "2026-05-09",
+      "visit_time": "08:30",
+      "provider_name": "Dr. Lisa Nguyen",
+      "department": "Neurology",
+      "reason": "Seizure disorder evaluation",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-016": {
+      "visit_id": "visit-016",
+      "patient_id": "patient-012",
+      "visit_date": "2026-05-12",
+      "visit_time": "13:00",
+      "provider_name": "Dr. Robert Anderson",
+      "department": "Orthopedics",
+      "reason": "Shoulder surgery consult",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-017": {
+      "visit_id": "visit-017",
+      "patient_id": "patient-013",
+      "visit_date": "2026-05-13",
+      "visit_time": "15:30",
+      "provider_name": "Dr. James Williams",
+      "department": "General Practice",
+      "reason": "Thyroid disorder management",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-018": {
+      "visit_id": "visit-018",
+      "patient_id": "patient-014",
+      "visit_date": "2026-05-14",
+      "visit_time": "09:00",
+      "provider_name": "Dr. Sarah Chen",
+      "department": "Cardiology",
+      "reason": "New patient \u2014 cardiac arrhythmia",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-019": {
+      "visit_id": "visit-019",
+      "patient_id": "patient-015",
+      "visit_date": "2026-05-15",
+      "visit_time": "10:30",
+      "provider_name": "Dr. Lisa Nguyen",
+      "department": "Neurology",
+      "reason": "Parkinson's disease follow-up",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-020": {
+      "visit_id": "visit-020",
+      "patient_id": "patient-016",
+      "visit_date": "2026-05-16",
+      "visit_time": "14:15",
+      "provider_name": "Dr. Marcus Johnson",
+      "department": "General Practice",
+      "reason": "Sports physical exam",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-021": {
+      "visit_id": "visit-021",
+      "patient_id": "patient-017",
+      "visit_date": "2026-05-19",
+      "visit_time": "11:00",
+      "provider_name": "Dr. Robert Anderson",
+      "department": "Orthopedics",
+      "reason": "Lower back pain treatment",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-022": {
+      "visit_id": "visit-022",
+      "patient_id": "patient-018",
+      "visit_date": "2026-05-20",
+      "visit_time": "09:45",
+      "provider_name": "Dr. Sarah Chen",
+      "department": "Cardiology",
+      "reason": "Heart failure management",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-023": {
+      "visit_id": "visit-023",
+      "patient_id": "patient-019",
+      "visit_date": "2026-05-21",
+      "visit_time": "13:30",
+      "provider_name": "Dr. James Williams",
+      "department": "General Practice",
+      "reason": "Annual women's health exam",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-024": {
+      "visit_id": "visit-024",
+      "patient_id": "patient-020",
+      "visit_date": "2026-05-22",
+      "visit_time": "08:00",
+      "provider_name": "Dr. Robert Anderson",
+      "department": "Orthopedics",
+      "reason": "ACL rehabilitation assessment",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-025": {
+      "visit_id": "visit-025",
+      "patient_id": "patient-005",
+      "visit_date": "2026-05-27",
+      "visit_time": "10:00",
+      "provider_name": "Dr. Lisa Nguyen",
+      "department": "Neurology",
+      "reason": "Neurological follow-up",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-026": {
+      "visit_id": "visit-026",
+      "patient_id": "patient-006",
+      "visit_date": "2026-06-02",
+      "visit_time": "14:30",
+      "provider_name": "Dr. Robert Anderson",
+      "department": "Orthopedics",
+      "reason": "Post-surgical knee assessment",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-027": {
+      "visit_id": "visit-027",
+      "patient_id": "patient-007",
+      "visit_date": "2026-06-03",
+      "visit_time": "09:00",
+      "provider_name": "Dr. Marcus Johnson",
+      "department": "General Practice",
+      "reason": "Hypertension management review",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-028": {
+      "visit_id": "visit-028",
+      "patient_id": "patient-008",
+      "visit_date": "2026-06-04",
+      "visit_time": "11:30",
+      "provider_name": "Dr. Robert Anderson",
+      "department": "Orthopedics",
+      "reason": "Pre-surgical joint evaluation",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-029": {
+      "visit_id": "visit-029",
+      "patient_id": "patient-009",
+      "visit_date": "2026-06-10",
+      "visit_time": "15:00",
+      "provider_name": "Dr. Marcus Johnson",
+      "department": "General Practice",
+      "reason": "Teen wellness exam",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-030": {
+      "visit_id": "visit-030",
+      "patient_id": "patient-010",
+      "visit_date": "2026-06-11",
+      "visit_time": "10:15",
+      "provider_name": "Dr. Sarah Chen",
+      "department": "Cardiology",
+      "reason": "EKG follow-up results",
+      "status": "scheduled",
+      "notes": null
+    },
+    "visit-514913e4": {
+      "visit_id": "visit-514913e4",
+      "patient_id": "patient-3f8c4ad2",
+      "visit_date": "2026-05-04",
+      "visit_time": "23:15",
+      "provider_name": "Care Team",
+      "department": "General Medicine",
+      "reason": "something",
+      "status": "scheduled",
+      "notes": "Created from first-time patient kiosk check-in."
+    },
+    "visit-2f953c7a": {
+      "visit_id": "visit-2f953c7a",
+      "patient_id": "patient-067338f0",
+      "visit_date": "2026-05-04",
+      "visit_time": "00:00",
+      "provider_name": "Care Team",
+      "department": "General Medicine",
+      "reason": "s",
+      "status": "checked_in",
+      "notes": "Created from first-time patient kiosk check-in."
+    },
+    "visit-c1100329": {
+      "visit_id": "visit-c1100329",
+      "patient_id": "patient-f76e07f7",
+      "visit_date": "2026-05-04",
+      "visit_time": "00:00",
+      "provider_name": "Care Team",
+      "department": "General Medicine",
+      "reason": "ty",
+      "status": "scheduled",
+      "notes": "Created from first-time patient kiosk check-in."
+    }
+  },
+  "assigned_forms": {
+    "assign-001": {
+      "assignment_id": "assign-001",
+      "visit_id": "visit-011",
+      "template_id": "template-002",
+      "form_id": null,
+      "assigned_by": "staff-004",
+      "assigned_at": "2026-04-28T10:00:00Z",
+      "status": "prefilled"
+    },
+    "assign-002": {
+      "assignment_id": "assign-002",
+      "visit_id": "visit-012",
+      "template_id": "template-001",
+      "form_id": null,
+      "assigned_by": "staff-002",
+      "assigned_at": "2026-04-29T08:30:00Z",
+      "status": "assigned"
+    },
+    "assign-003": {
+      "assignment_id": "assign-003",
+      "visit_id": "visit-013",
+      "template_id": "template-001",
+      "form_id": null,
+      "assigned_by": "staff-002",
+      "assigned_at": "2026-04-29T09:00:00Z",
+      "status": "assigned"
+    },
+    "assign-004": {
+      "assignment_id": "assign-004",
+      "visit_id": "visit-014",
+      "template_id": "template-002",
+      "form_id": null,
+      "assigned_by": "staff-010",
+      "assigned_at": "2026-04-30T11:00:00Z",
+      "status": "assigned"
+    },
+    "assign-005": {
+      "assignment_id": "assign-005",
+      "visit_id": "visit-015",
+      "template_id": "template-001",
+      "form_id": null,
+      "assigned_by": "staff-008",
+      "assigned_at": "2026-04-30T13:00:00Z",
+      "status": "assigned"
+    },
+    "assign-006": {
+      "assignment_id": "assign-006",
+      "visit_id": "visit-016",
+      "template_id": "template-001",
+      "form_id": null,
+      "assigned_by": "staff-006",
+      "assigned_at": "2026-05-01T08:00:00Z",
+      "status": "assigned"
+    },
+    "assign-007": {
+      "assignment_id": "assign-007",
+      "visit_id": "visit-017",
+      "template_id": "template-001",
+      "form_id": null,
+      "assigned_by": "staff-002",
+      "assigned_at": "2026-05-01T09:30:00Z",
+      "status": "prefilled"
+    },
+    "assign-008": {
+      "assignment_id": "assign-008",
+      "visit_id": "visit-018",
+      "template_id": "template-002",
+      "form_id": null,
+      "assigned_by": "staff-004",
+      "assigned_at": "2026-05-01T14:00:00Z",
+      "status": "assigned"
+    },
+    "assign-009": {
+      "assignment_id": "assign-009",
+      "visit_id": "visit-019",
+      "template_id": "template-001",
+      "form_id": null,
+      "assigned_by": "staff-008",
+      "assigned_at": "2026-05-02T08:00:00Z",
+      "status": "assigned"
+    },
+    "assign-010": {
+      "assignment_id": "assign-010",
+      "visit_id": "visit-020",
+      "template_id": "template-001",
+      "form_id": null,
+      "assigned_by": "staff-002",
+      "assigned_at": "2026-05-02T09:00:00Z",
+      "status": "assigned"
+    },
+    "assign-011": {
+      "assignment_id": "assign-011",
+      "visit_id": "visit-021",
+      "template_id": "template-003",
+      "form_id": null,
+      "assigned_by": "staff-006",
+      "assigned_at": "2026-05-02T10:00:00Z",
+      "status": "assigned"
+    },
+    "assign-012": {
+      "assignment_id": "assign-012",
+      "visit_id": "visit-022",
+      "template_id": "template-002",
+      "form_id": null,
+      "assigned_by": "staff-010",
+      "assigned_at": "2026-05-02T11:00:00Z",
+      "status": "assigned"
+    },
+    "assign-013": {
+      "assignment_id": "assign-013",
+      "visit_id": "visit-023",
+      "template_id": "template-001",
+      "form_id": null,
+      "assigned_by": "staff-002",
+      "assigned_at": "2026-05-02T12:00:00Z",
+      "status": "assigned"
+    },
+    "assign-014": {
+      "assignment_id": "assign-014",
+      "visit_id": "visit-024",
+      "template_id": "template-003",
+      "form_id": null,
+      "assigned_by": "staff-006",
+      "assigned_at": "2026-05-02T13:00:00Z",
+      "status": "prefilled"
+    },
+    "assign-015": {
+      "assignment_id": "assign-015",
+      "visit_id": "visit-025",
+      "template_id": "template-001",
+      "form_id": null,
+      "assigned_by": "staff-008",
+      "assigned_at": "2026-05-02T14:00:00Z",
+      "status": "assigned"
+    },
+    "assign-27aea446": {
+      "assignment_id": "assign-27aea446",
+      "visit_id": "visit-514913e4",
+      "template_id": "template-001",
+      "form_id": "form-3bad09c0",
+      "assigned_by": "staff-001",
+      "assigned_at": "2026-05-04T04:03:18.810876+00:00",
+      "status": "prefilled"
+    },
+    "assign-76fa9f9f": {
+      "assignment_id": "assign-76fa9f9f",
+      "visit_id": "visit-2f953c7a",
+      "template_id": "template-001",
+      "form_id": "form-c5affe63",
+      "assigned_by": "staff-001",
+      "assigned_at": "2026-05-04T04:46:59.472466+00:00",
+      "status": "prefilled"
+    },
+    "assign-b813cfac": {
+      "assignment_id": "assign-b813cfac",
+      "visit_id": "visit-c1100329",
+      "template_id": "template-001",
+      "form_id": "form-d6c9ce98",
+      "assigned_by": "staff-001",
+      "assigned_at": "2026-05-04T04:53:10.368922+00:00",
+      "status": "prefilled"
+    }
+  },
+  "sessions": {
+    "kiosk-visit-514913e4": {
+      "session_id": "kiosk-visit-514913e4",
+      "session_type": "intake",
+      "visit_id": "visit-514913e4",
+      "task_id": null,
+      "patient_id": "patient-3f8c4ad2",
+      "status": "in_progress",
+      "conversation": [],
+      "collected_answers": {
+        "current_medications": "Diabetes",
+        "reason_for_visit": "Pesticide Health Examination, Pre-Employment Medical Examination",
+        "known_allergies": "Others",
+        "full_name": "Bob Evans",
+        "gender": "M",
+        "address": "23432 Federal Way"
+      },
+      "flags": [],
+      "created_at": "2026-05-04T04:43:13.928525+00:00",
+      "completed_at": null,
+      "current_question_index": 0
+    },
+    "kiosk-visit-2f953c7a": {
+      "session_id": "kiosk-visit-2f953c7a",
+      "session_type": "intake",
+      "visit_id": "visit-2f953c7a",
+      "task_id": null,
+      "patient_id": "patient-067338f0",
+      "status": "completed",
+      "conversation": [],
+      "collected_answers": {
+        "current_medications": "Metformin 500mg daily, Lisinopril 10mg daily",
+        "emergency_contact_name": "Robert Smith",
+        "insurance_provider": "BlueCross BlueShield",
+        "known_allergies": "Penicillin (anaphylaxis), Sulfa drugs",
+        "insurance_id": "BCB-JS-1985-0314",
+        "emergency_contact_relation": "Spouse",
+        "emergency_contact_phone": "+15558670001",
+        "consent_date": "2026-05-04T04:49:18.561Z",
+        "date_of_birth": "1985-03-14",
+        "email": "jane.smith@email.com",
+        "full_name": "Jane A. Smith",
+        "gender": "Female",
+        "address": "123 Maple Street, Springfield, IL 62701",
+        "consent_signature": "robert smith",
+        "phone": "+15558675309"
+      },
+      "flags": [],
+      "created_at": "2026-05-04T04:48:59.949602+00:00",
+      "completed_at": "2026-05-04T04:49:11.625081+00:00",
+      "current_question_index": 0
+    }
+  },
+  "followup_tasks": {
+    "task-001": {
+      "task_id": "task-001",
+      "patient_id": "patient-001",
+      "visit_id": "visit-001",
+      "created_by": "staff-001",
+      "scheduled_at": "2026-05-06T10:00:00Z",
+      "status": "scheduled",
+      "questions": [
+        {
+          "question_id": "qb-001",
+          "text": "On a scale of 0 to 10, how would you rate your pain level today?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "10",
+            "nine",
+            "unbearable",
+            "severe",
+            "excruciating"
+          ]
+        },
+        {
+          "question_id": "qb-002",
+          "text": "Are you taking all of your prescribed medications as directed?",
+          "category": "medication",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "stopped",
+            "forgot",
+            "can't afford",
+            "side effects"
+          ]
+        },
+        {
+          "question_id": "qb-003",
+          "text": "Have you experienced any new or worsening symptoms since your last visit?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "chest pain",
+            "can't breathe",
+            "worse",
+            "new symptom",
+            "bleeding",
+            "fever"
+          ]
+        },
+        {
+          "question_id": "qb-010",
+          "text": "Have you had any shortness of breath or chest tightness?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "yes",
+            "can't breathe",
+            "chest pain",
+            "tightness",
+            "gasping"
+          ]
+        }
+      ],
+      "session_id": null,
+      "results_summary": null,
+      "flags": [],
+      "created_at": "2026-04-06T09:00:00Z"
+    },
+    "task-002": {
+      "task_id": "task-002",
+      "patient_id": "patient-002",
+      "visit_id": "visit-002",
+      "created_by": "staff-003",
+      "scheduled_at": "2026-05-07T14:00:00Z",
+      "status": "scheduled",
+      "questions": [
+        {
+          "question_id": "qb-001",
+          "text": "On a scale of 0 to 10, how would you rate your pain level today?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "10",
+            "nine",
+            "unbearable",
+            "severe",
+            "excruciating"
+          ]
+        },
+        {
+          "question_id": "qb-002",
+          "text": "Are you taking all of your prescribed medications as directed?",
+          "category": "medication",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "stopped",
+            "forgot",
+            "can't afford",
+            "side effects"
+          ]
+        },
+        {
+          "question_id": "qb-004",
+          "text": "How has your energy level been \u2014 are you able to do your normal daily activities?",
+          "category": "activity",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "exhausted",
+            "can't get up",
+            "bedridden",
+            "unable"
+          ]
+        },
+        {
+          "question_id": "qb-011",
+          "text": "Are you eating and drinking normally?",
+          "category": "activity",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "can't eat",
+            "vomiting",
+            "nausea",
+            "nothing"
+          ]
+        }
+      ],
+      "session_id": null,
+      "results_summary": null,
+      "flags": [],
+      "created_at": "2026-04-09T08:00:00Z"
+    },
+    "task-003": {
+      "task_id": "task-003",
+      "patient_id": "patient-003",
+      "visit_id": "visit-003",
+      "created_by": "staff-003",
+      "scheduled_at": "2026-05-08T11:00:00Z",
+      "status": "scheduled",
+      "questions": [
+        {
+          "question_id": "qb-008",
+          "text": "Have you had any fever above 101\u00b0F or chills since your procedure?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "yes",
+            "fever",
+            "chills",
+            "hot",
+            "sweating"
+          ]
+        },
+        {
+          "question_id": "qb-009",
+          "text": "How does your incision or wound site look \u2014 any redness, swelling, or discharge?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "red",
+            "swollen",
+            "pus",
+            "discharge",
+            "opened up",
+            "bleeding"
+          ]
+        },
+        {
+          "question_id": "qb-001",
+          "text": "On a scale of 0 to 10, how would you rate your pain level today?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "10",
+            "nine",
+            "unbearable",
+            "severe",
+            "excruciating"
+          ]
+        },
+        {
+          "question_id": "qb-004",
+          "text": "How has your energy level been \u2014 are you able to do your normal daily activities?",
+          "category": "activity",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "exhausted",
+            "can't get up",
+            "bedridden",
+            "unable"
+          ]
+        }
+      ],
+      "session_id": null,
+      "results_summary": null,
+      "flags": [],
+      "created_at": "2026-04-11T10:00:00Z"
+    },
+    "task-004": {
+      "task_id": "task-004",
+      "patient_id": "patient-004",
+      "visit_id": "visit-004",
+      "created_by": "staff-001",
+      "scheduled_at": "2026-05-01T09:00:00Z",
+      "status": "completed",
+      "questions": [
+        {
+          "question_id": "qb-001",
+          "text": "On a scale of 0 to 10, how would you rate your pain level today?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "10",
+            "nine",
+            "unbearable",
+            "severe",
+            "excruciating"
+          ]
+        },
+        {
+          "question_id": "qb-003",
+          "text": "Have you experienced any new or worsening symptoms since your last visit?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "chest pain",
+            "can't breathe",
+            "worse",
+            "new symptom",
+            "bleeding",
+            "fever"
+          ]
+        },
+        {
+          "question_id": "qb-010",
+          "text": "Have you had any shortness of breath or chest tightness?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "yes",
+            "can't breathe",
+            "chest pain",
+            "tightness",
+            "gasping"
+          ]
+        },
+        {
+          "question_id": "qb-005",
+          "text": "Have you had any falls or felt dizzy or lightheaded?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "yes",
+            "fell",
+            "dizzy",
+            "fainted",
+            "passed out"
+          ]
+        }
+      ],
+      "session_id": null,
+      "results_summary": null,
+      "flags": [],
+      "created_at": "2026-04-13T11:00:00Z"
+    },
+    "task-005": {
+      "task_id": "task-005",
+      "patient_id": "patient-005",
+      "visit_id": "visit-005",
+      "created_by": "staff-007",
+      "scheduled_at": "2026-05-09T13:30:00Z",
+      "status": "scheduled",
+      "questions": [
+        {
+          "question_id": "qb-001",
+          "text": "On a scale of 0 to 10, how would you rate your pain level today?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "10",
+            "nine",
+            "unbearable",
+            "severe",
+            "excruciating"
+          ]
+        },
+        {
+          "question_id": "qb-006",
+          "text": "How has your mood been? Are you feeling anxious or down?",
+          "category": "mood",
+          "is_custom": false,
+          "concerning_keywords": [
+            "depressed",
+            "hopeless",
+            "hurt myself",
+            "suicidal",
+            "can't cope"
+          ]
+        },
+        {
+          "question_id": "qb-007",
+          "text": "Are you getting enough sleep \u2014 roughly how many hours a night?",
+          "category": "mood",
+          "is_custom": false,
+          "concerning_keywords": [
+            "none",
+            "zero",
+            "can't sleep",
+            "insomnia",
+            "awake all night"
+          ]
+        },
+        {
+          "question_id": "qb-005",
+          "text": "Have you had any falls or felt dizzy or lightheaded?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "yes",
+            "fell",
+            "dizzy",
+            "fainted",
+            "passed out"
+          ]
+        }
+      ],
+      "session_id": null,
+      "results_summary": null,
+      "flags": [],
+      "created_at": "2026-04-16T09:00:00Z"
+    },
+    "task-006": {
+      "task_id": "task-006",
+      "patient_id": "patient-006",
+      "visit_id": "visit-006",
+      "created_by": "staff-005",
+      "scheduled_at": "2026-04-28T08:45:00Z",
+      "status": "completed",
+      "questions": [
+        {
+          "question_id": "qb-008",
+          "text": "Have you had any fever above 101\u00b0F or chills since your procedure?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "yes",
+            "fever",
+            "chills",
+            "hot",
+            "sweating"
+          ]
+        },
+        {
+          "question_id": "qb-009",
+          "text": "How does your incision or wound site look \u2014 any redness, swelling, or discharge?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "red",
+            "swollen",
+            "pus",
+            "discharge",
+            "opened up",
+            "bleeding"
+          ]
+        },
+        {
+          "question_id": "qb-001",
+          "text": "On a scale of 0 to 10, how would you rate your pain level today?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "10",
+            "nine",
+            "unbearable",
+            "severe",
+            "excruciating"
+          ]
+        },
+        {
+          "question_id": "qb-004",
+          "text": "How has your energy level been \u2014 are you able to do your normal daily activities?",
+          "category": "activity",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "exhausted",
+            "can't get up",
+            "bedridden",
+            "unable"
+          ]
+        },
+        {
+          "question_id": "qb-011",
+          "text": "Are you eating and drinking normally?",
+          "category": "activity",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "can't eat",
+            "vomiting",
+            "nausea",
+            "nothing"
+          ]
+        }
+      ],
+      "session_id": null,
+      "results_summary": null,
+      "flags": [],
+      "created_at": "2026-04-19T08:00:00Z"
+    },
+    "task-007": {
+      "task_id": "task-007",
+      "patient_id": "patient-007",
+      "visit_id": "visit-007",
+      "created_by": "staff-009",
+      "scheduled_at": "2026-05-10T15:00:00Z",
+      "status": "scheduled",
+      "questions": [
+        {
+          "question_id": "qb-002",
+          "text": "Are you taking all of your prescribed medications as directed?",
+          "category": "medication",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "stopped",
+            "forgot",
+            "can't afford",
+            "side effects"
+          ]
+        },
+        {
+          "question_id": "qb-003",
+          "text": "Have you experienced any new or worsening symptoms since your last visit?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "chest pain",
+            "can't breathe",
+            "worse",
+            "new symptom",
+            "bleeding",
+            "fever"
+          ]
+        },
+        {
+          "question_id": "qb-006",
+          "text": "How has your mood been? Are you feeling anxious or down?",
+          "category": "mood",
+          "is_custom": false,
+          "concerning_keywords": [
+            "depressed",
+            "hopeless",
+            "hurt myself",
+            "suicidal",
+            "can't cope"
+          ]
+        },
+        {
+          "question_id": "qb-007",
+          "text": "Are you getting enough sleep \u2014 roughly how many hours a night?",
+          "category": "mood",
+          "is_custom": false,
+          "concerning_keywords": [
+            "none",
+            "zero",
+            "can't sleep",
+            "insomnia",
+            "awake all night"
+          ]
+        }
+      ],
+      "session_id": null,
+      "results_summary": null,
+      "flags": [],
+      "created_at": "2026-04-22T14:00:00Z"
+    },
+    "task-008": {
+      "task_id": "task-008",
+      "patient_id": "patient-008",
+      "visit_id": "visit-008",
+      "created_by": "staff-005",
+      "scheduled_at": "2026-05-11T09:15:00Z",
+      "status": "scheduled",
+      "questions": [
+        {
+          "question_id": "qb-001",
+          "text": "On a scale of 0 to 10, how would you rate your pain level today?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "10",
+            "nine",
+            "unbearable",
+            "severe",
+            "excruciating"
+          ]
+        },
+        {
+          "question_id": "qb-004",
+          "text": "How has your energy level been \u2014 are you able to do your normal daily activities?",
+          "category": "activity",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "exhausted",
+            "can't get up",
+            "bedridden",
+            "unable"
+          ]
+        },
+        {
+          "question_id": "qb-009",
+          "text": "How does your incision or wound site look \u2014 any redness, swelling, or discharge?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "red",
+            "swollen",
+            "pus",
+            "discharge",
+            "opened up",
+            "bleeding"
+          ]
+        },
+        {
+          "question_id": "qb-011",
+          "text": "Are you eating and drinking normally?",
+          "category": "activity",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "can't eat",
+            "vomiting",
+            "nausea",
+            "nothing"
+          ]
+        }
+      ],
+      "session_id": null,
+      "results_summary": null,
+      "flags": [],
+      "created_at": "2026-04-25T09:00:00Z"
+    },
+    "task-009": {
+      "task_id": "task-009",
+      "patient_id": "patient-009",
+      "visit_id": "visit-009",
+      "created_by": "staff-009",
+      "scheduled_at": "2026-05-12T10:45:00Z",
+      "status": "scheduled",
+      "questions": [
+        {
+          "question_id": "qb-001",
+          "text": "On a scale of 0 to 10, how would you rate your pain level today?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "10",
+            "nine",
+            "unbearable",
+            "severe",
+            "excruciating"
+          ]
+        },
+        {
+          "question_id": "qb-002",
+          "text": "Are you taking all of your prescribed medications as directed?",
+          "category": "medication",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "stopped",
+            "forgot",
+            "can't afford",
+            "side effects"
+          ]
+        },
+        {
+          "question_id": "qb-007",
+          "text": "Are you getting enough sleep \u2014 roughly how many hours a night?",
+          "category": "mood",
+          "is_custom": false,
+          "concerning_keywords": [
+            "none",
+            "zero",
+            "can't sleep",
+            "insomnia",
+            "awake all night"
+          ]
+        },
+        {
+          "question_id": "qb-012",
+          "text": "Do you have any questions for your care team from since your discharge?",
+          "category": "custom",
+          "is_custom": false,
+          "concerning_keywords": []
+        }
+      ],
+      "session_id": null,
+      "results_summary": null,
+      "flags": [],
+      "created_at": "2026-04-28T10:00:00Z"
+    },
+    "task-010": {
+      "task_id": "task-010",
+      "patient_id": "patient-010",
+      "visit_id": "visit-010",
+      "created_by": "staff-001",
+      "scheduled_at": "2026-05-13T14:30:00Z",
+      "status": "scheduled",
+      "questions": [
+        {
+          "question_id": "qb-003",
+          "text": "Have you experienced any new or worsening symptoms since your last visit?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "chest pain",
+            "can't breathe",
+            "worse",
+            "new symptom",
+            "bleeding",
+            "fever"
+          ]
+        },
+        {
+          "question_id": "qb-010",
+          "text": "Have you had any shortness of breath or chest tightness?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "yes",
+            "can't breathe",
+            "chest pain",
+            "tightness",
+            "gasping"
+          ]
+        },
+        {
+          "question_id": "qb-005",
+          "text": "Have you had any falls or felt dizzy or lightheaded?",
+          "category": "symptoms",
+          "is_custom": false,
+          "concerning_keywords": [
+            "yes",
+            "fell",
+            "dizzy",
+            "fainted",
+            "passed out"
+          ]
+        },
+        {
+          "question_id": "qb-002",
+          "text": "Are you taking all of your prescribed medications as directed?",
+          "category": "medication",
+          "is_custom": false,
+          "concerning_keywords": [
+            "no",
+            "stopped",
+            "forgot",
+            "can't afford",
+            "side effects"
+          ]
+        }
+      ],
+      "session_id": null,
+      "results_summary": null,
+      "flags": [],
+      "created_at": "2026-04-30T13:00:00Z"
+    }
+  },
+  "followup_responses": {},
+  "voice_call_sessions": {}
+}

@@ -702,11 +702,12 @@ def run_intake_pipeline(ocr_text: str, patient_id: str) -> PrefilledForm:
 
 
 _SCAN_EXTRACT_SYSTEM = """
-You are extracting structured patient intake values from OCR text captured from a paper form,
-insurance card, or ID shown to a clinic camera.
+You receive plain OCR-transcribed text from a document the patient photographed at clinic check-in.
+Your only task is to extract values for the listed intake fields.
+Never refuse — if a field cannot be matched, simply omit it from the JSON.
 
 You are given:
-- OCR text from the camera capture
+- OCR text from the camera capture (already transcribed — do not re-evaluate the image)
 - the exact intake fields we care about
 
 Rules:
@@ -717,7 +718,7 @@ Rules:
 - Never invent values.
 - Do not return empty strings.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON — no markdown fences, no commentary:
 [
   {
     "field_id": "phone",
@@ -728,9 +729,24 @@ Return ONLY valid JSON:
 """.strip()
 
 
+_OCR_REFUSAL_PHRASES = (
+    "i'm sorry",
+    "i am sorry",
+    "i can't assist",
+    "i cannot assist",
+    "i'm unable",
+    "i am unable",
+    "i'm not able",
+    "i am not able",
+    "can't help with",
+    "cannot help with",
+)
+
+
 def ocr_image_to_text(image_bytes: bytes, mime_type: str = "image/png") -> str:
     """
     OCR an image captured from a camera using GPT-4o vision.
+    Returns transcribed plain text only; raises ValueError on refusal or empty result.
     """
     if not settings.openai_api_key:
         raise ValueError("OpenAI API key is required for camera scanning.")
@@ -740,13 +756,23 @@ def ocr_image_to_text(image_bytes: bytes, mime_type: str = "image/png") -> str:
         model="gpt-4o",
         messages=[
             {
+                "role": "system",
+                "content": (
+                    "You are an OCR transcription tool used by a medical clinic during patient self-check-in. "
+                    "Your only task is mechanical text transcription. "
+                    "Do not provide medical advice, diagnoses, or commentary. "
+                    "If the image is unclear or partially legible, transcribe whatever text is visible and nothing more."
+                ),
+            },
+            {
                 "role": "user",
                 "content": [
                     {
                         "type": "text",
                         "text": (
-                            "This is a photo of a patient intake form, ID, or insurance document. "
-                            "Extract all visible text exactly as it appears. Output plain text only."
+                            "The patient has photographed their own document (a form, insurance card, or ID) "
+                            "to pre-fill their check-in. Transcribe every visible character exactly as printed. "
+                            "Output plain text only — no commentary, no formatting markup."
                         ),
                     },
                     {
@@ -754,11 +780,36 @@ def ocr_image_to_text(image_bytes: bytes, mime_type: str = "image/png") -> str:
                         "image_url": {"url": f"data:{mime_type};base64,{image_b64}", "detail": "high"},
                     },
                 ],
-            }
+            },
         ],
         temperature=0,
     )
-    return response.choices[0].message.content.strip()
+    text = response.choices[0].message.content.strip()
+    lowered = text.lower()
+    if any(phrase in lowered for phrase in _OCR_REFUSAL_PHRASES):
+        raise ValueError(
+            "The image could not be scanned (model declined). "
+            "Try uploading a clearer photo or use the file upload option."
+        )
+    return text
+
+
+def ocr_pdf_to_text(pdf_bytes: bytes) -> str:
+    """
+    Rasterise each PDF page to PNG at 200 DPI and run GPT-4o vision OCR on each.
+    Returns all pages' text joined by double newlines.
+    """
+    import fitz  # PyMuPDF
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    pages_text: list[str] = []
+    for page in doc:
+        pix = page.get_pixmap(dpi=200)
+        png_bytes = pix.tobytes("png")
+        page_text = ocr_image_to_text(png_bytes, "image/png")
+        if page_text:
+            pages_text.append(page_text)
+    return "\n\n".join(pages_text)
 
 
 def _local_scan_extract(form_schema: FormSchema, ocr_text: str) -> list[CheckInScannedField]:
@@ -848,8 +899,9 @@ def extract_scanned_fields(form_schema: FormSchema, ocr_text: str) -> list[Check
     )
 
     raw = _chat(_SCAN_EXTRACT_SYSTEM, prompt)
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    # Strip any markdown code fences regardless of language label or missing closing fence.
+    raw = re.sub(r"^```[^\n]*\n?", "", raw.strip())
+    raw = re.sub(r"\n?```$", "", raw.strip()).strip()
 
     try:
         parsed = json.loads(raw)

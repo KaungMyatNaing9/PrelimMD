@@ -35,7 +35,7 @@ from app.models.schemas import (
 from app.services import ai_engine, store
 
 router = APIRouter()
-SCAN_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+SCAN_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"}
 
 
 @router.post("/new-checkin", response_model=NewPatientCheckInResponse)
@@ -261,17 +261,46 @@ async def scan_checkin_form(visit_id: str, file: UploadFile):
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="No image provided.")
-    if file.content_type not in SCAN_MIME_TYPES:
-        raise HTTPException(status_code=415, detail="Please upload a JPG, PNG, or WEBP image.")
+
+    # Infer MIME from filename when the browser strips it (common on mobile WebKit).
+    _EXT_MIME = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".heic": "image/heic",
+        ".heif": "image/heif",
+        ".pdf": "application/pdf",
+    }
+    content_type = file.content_type or ""
+    if not content_type or content_type == "application/octet-stream":
+        import os
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        content_type = _EXT_MIME.get(ext, "")
+
+    if content_type not in SCAN_MIME_TYPES:
+        raise HTTPException(status_code=415, detail="Please upload a JPG, PNG, WEBP image or a PDF.")
 
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded image is empty.")
 
     try:
-        ocr_text = ai_engine.ocr_image_to_text(content, file.content_type or "image/png")
+        if content_type == "application/pdf":
+            ocr_text = ai_engine.ocr_pdf_to_text(content)
+        else:
+            ocr_text = ai_engine.ocr_image_to_text(content, content_type)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Camera scan OCR failed: {exc}")
+
+    if not ocr_text or not ocr_text.strip():
+        return CheckInScanResponse(
+            visit_id=visit_id,
+            scanned_fields=[],
+            applied_count=0,
+            ocr_preview=None,
+            message="No text could be read from the image. You can still fill in fields manually.",
+        )
 
     merged_candidates: dict[str, CheckInScannedField] = {}
     for assignment in assignments:

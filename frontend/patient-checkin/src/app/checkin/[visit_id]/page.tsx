@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   getCheckinForms,
   scanCheckinForm,
@@ -66,6 +66,7 @@ export default function CheckinPage() {
   const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [previewReady, setPreviewReady] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -87,6 +88,29 @@ export default function CheckinPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!cameraOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [cameraOpen]);
+
+  // Bind stream synchronously after the <video> mounts so srcObject is set before the first paint.
+  useLayoutEffect(() => {
+    const video = videoRef.current;
+    if (!cameraOpen || !video || !streamRef.current) return;
+    video.srcObject = streamRef.current;
+    video.play().catch((err) => {
+      setCameraError("We couldn't start the camera preview. Please try again.");
+      console.error("video.play failed:", err);
+    });
+    return () => {
+      video.srcObject = null;
+    };
+  }, [cameraOpen]);
 
   const allFields = useMemo(() => formGroups.flatMap((g) => g.fields), [formGroups]);
   const fieldById = useMemo(
@@ -159,6 +183,9 @@ export default function CheckinPage() {
     setScanBusy(true);
     setError("");
     setCameraError("");
+    setScanMessage("");
+    setScanPreview(null);
+    setScanApplied({});
     try {
       const result = await scanCheckinForm(visit_id, file, filename);
       applyScannedFields(result.scanned_fields);
@@ -182,39 +209,66 @@ export default function CheckinPage() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      setCameraOpen(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+      } catch (err) {
+        // On laptops without a rear camera the environment constraint can fail; retry with any camera.
+        if (err instanceof DOMException && err.name === "OverconstrainedError") {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        } else {
+          throw err;
+        }
       }
-    } catch {
-      setCameraError("We couldn't access the camera. Please allow camera permissions or upload a photo.");
+      streamRef.current = stream;
+      setPreviewReady(false);
+      setCameraOpen(true);
+      // Stream binding happens in the useEffect that runs after the <video> element mounts.
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "NotAllowedError") {
+        setCameraError("Camera permission was denied. Please allow camera access and try again.");
+      } else {
+        setCameraError("We couldn't access the camera. Please allow camera permissions or upload a photo.");
+      }
     }
   };
 
   const stopCamera = () => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+    setPreviewReady(false);
     setCameraOpen(false);
   };
 
   const capturePhoto = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    if (!video || !canvas) {
+      setCameraError("Camera is not ready. Close the camera and try again.");
+      return;
+    }
 
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
     const context = canvas.getContext("2d");
-    if (!context) return;
+    if (!context) {
+      setCameraError("Could not prepare capture surface. Please try again.");
+      return;
+    }
 
+    if (!video.videoWidth || !video.videoHeight) {
+      setCameraError("Preview is still starting. Wait until you can see the live image, then try again.");
+      return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
     if (!blob) {
@@ -222,7 +276,10 @@ export default function CheckinPage() {
       return;
     }
 
-    await handleScanBlob(blob, "camera-capture.jpg");
+    // Wrap in a File so the MIME type is preserved reliably across all browsers (some WebKit
+    // builds strip it when appending a raw Blob to FormData).
+    const imageFile = new File([blob], "capture.jpg", { type: "image/jpeg" });
+    await handleScanBlob(imageFile, "capture.jpg");
     stopCamera();
   };
 
@@ -294,8 +351,7 @@ export default function CheckinPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
-            capture="environment"
+            accept="image/*,application/pdf"
             style={{ display: "none" }}
             onChange={handleFileSelected}
           />
@@ -304,12 +360,12 @@ export default function CheckinPage() {
         {cameraError ? <div className="error-msg" style={{ marginTop: "1rem" }}>{cameraError}</div> : null}
 
         {cameraOpen ? (
-          <div className="camera-stage">
-            <video ref={videoRef} className="camera-video" playsInline muted />
+          <div className="camera-fullscreen" role="dialog" aria-modal="true" aria-label="Camera scan">
+            <video ref={videoRef} className="camera-video" playsInline muted onLoadedMetadata={() => setPreviewReady(true)} />
             <canvas ref={canvasRef} style={{ display: "none" }} />
-            <div className="btn-row" style={{ marginTop: "1rem" }}>
-              <button className="btn btn-primary" type="button" onClick={capturePhoto} disabled={scanBusy}>
-                {scanBusy ? "Scanning..." : "Capture and scan"}
+            <div className="camera-toolbar">
+              <button className="btn btn-primary" type="button" onClick={capturePhoto} disabled={scanBusy || !previewReady}>
+                {scanBusy ? "Scanning..." : !previewReady ? "Starting preview..." : "Capture and scan"}
               </button>
               <button className="btn btn-secondary" type="button" onClick={stopCamera}>
                 Close camera
