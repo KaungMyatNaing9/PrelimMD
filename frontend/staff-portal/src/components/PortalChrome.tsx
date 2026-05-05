@@ -6,10 +6,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const navItems = [
-  { href: "/", label: "Dashboard" },
-  { href: "/patients", label: "Patients" },
-  { href: "/calls", label: "Intake Progress" },
-  { href: "/forms-library", label: "Forms Library" },
+  { href: "/", label: "Dashboard", icon: "🏠" },
+  { href: "/patients", label: "Patients", icon: "👥" },
+  { href: "/calls", label: "Intake Progress", icon: "📊" },
+  { href: "/forms-library", label: "Forms Library", icon: "📋" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -44,7 +44,7 @@ function headerCopy(pathname: string) {
   }
   return {
     title: "Dashboard",
-    subtitle: "Today’s schedule, intake readiness, and patient check-in status.",
+    subtitle: "Today's schedule, intake readiness, and patient check-in status.",
   };
 }
 
@@ -71,15 +71,16 @@ export function PortalChrome({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-slate-50">
       <div className="flex min-h-screen">
         <aside
-          className={`hidden border-r border-white/10 bg-navy text-white lg:flex lg:flex-col ${
-            collapsed ? "lg:w-24" : "lg:w-72"
-          } transition-all duration-300`}
+          className={`hidden border-r border-white/10 bg-navy text-white lg:flex lg:flex-col sticky top-0 h-screen ${
+            collapsed ? "lg:w-16" : "lg:w-72"
+          } transition-all duration-300 shrink-0`}
         >
-          <div className="flex h-full flex-col px-4 py-6">
-            <div className="mb-8 flex items-center justify-between gap-3">
-              <Link href="/" className="flex min-w-0 items-center gap-3 overflow-hidden">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white p-2 shadow-clinical">
-                  <Image src="/logo.png" alt="PrelimMD logo" width={36} height={36} priority />
+          <div className="flex h-full flex-col py-6 overflow-y-auto">
+            {/* Logo + collapse button */}
+            <div className={`mb-8 ${collapsed ? "flex flex-col items-center gap-3 px-2" : "flex items-center justify-between gap-3 px-4"}`}>
+              <Link href="/" className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 shadow-clinical">
+                  <Image src="/logo.png" alt="PrelimMD logo" width={32} height={32} priority />
                 </div>
                 {!collapsed ? (
                   <div className="min-w-0">
@@ -90,42 +91,59 @@ export function PortalChrome({ children }: { children: React.ReactNode }) {
               </Link>
               <button
                 type="button"
-                onClick={() => setCollapsed((value) => !value)}
-                className="rounded-xl px-3 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+                onClick={() => setCollapsed((v) => !v)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
                 aria-label="Toggle sidebar"
               >
-                {collapsed ? "→" : "←"}
+                {collapsed ? "›" : "‹"}
               </button>
             </div>
 
-            <nav className="space-y-2">
+            {/* Nav items */}
+            <nav className={`space-y-1 ${collapsed ? "px-2" : "px-3"}`}>
               {navItems.map((item) => {
                 const active = isActive(pathname, item.href);
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                      active ? "bg-white text-navy shadow-clinical" : "text-white/75 hover:bg-white/10 hover:text-white"
+                    title={collapsed ? item.label : undefined}
+                    className={`flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition ${
+                      collapsed ? "justify-center px-2" : "px-3"
+                    } ${
+                      active
+                        ? "bg-white text-navy shadow-clinical"
+                        : "text-white/75 hover:bg-white/10 hover:text-white"
                     }`}
                   >
-                    {collapsed ? item.label[0] : item.label}
+                    <span className="text-base leading-none">{item.icon}</span>
+                    {!collapsed ? <span>{item.label}</span> : null}
                   </Link>
                 );
               })}
             </nav>
 
-            <div className="mt-auto rounded-3xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-teal text-sm font-semibold text-white">
-                  SM
-                </div>
-                {!collapsed ? (
-                  <div>
-                    <div className="text-sm font-semibold">Sarah Mitchell, RN</div>
-                    <div className="text-xs text-white/60">Pre-Visit Intake Nurse</div>
+            {/* User badge */}
+            <div className={`mt-auto ${collapsed ? "px-2" : "px-3"}`}>
+              <div
+                className={`rounded-2xl border border-white/10 bg-white/5 p-3 ${
+                  collapsed ? "flex justify-center" : ""
+                }`}
+              >
+                <div className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}>
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal text-xs font-semibold text-white"
+                    title={collapsed ? "Sarah Mitchell, RN" : undefined}
+                  >
+                    SM
                   </div>
-                ) : null}
+                  {!collapsed ? (
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">Sarah Mitchell, RN</div>
+                      <div className="truncate text-xs text-white/60">Pre-Visit Intake Nurse</div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>

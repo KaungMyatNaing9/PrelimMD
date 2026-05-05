@@ -22,6 +22,9 @@ const STATUS_STYLES: Record<string, string> = {
   Incomplete: "bg-amber-100 text-amber-800",
 };
 
+type FilterKey = "scheduled" | "intake" | "forms" | "ready" | null;
+
+
 function sameDay(date: string, today: string) {
   return date === today;
 }
@@ -36,9 +39,29 @@ function callStatusForVisit(visit: ScheduledVisit, overview?: IntakeOverview, se
   return "Pending";
 }
 
-function statCard(title: string, value: number, note: string, icon: string, tone: string) {
+interface StatCardProps {
+  title: string;
+  value: number;
+  note: string;
+  icon: string;
+  tone: string;
+  filterKey: FilterKey;
+  activeFilter: FilterKey;
+  onClick: (key: FilterKey) => void;
+}
+
+function StatCard({ title, value, note, icon, tone, filterKey, activeFilter, onClick }: StatCardProps) {
+  const isActive = activeFilter === filterKey;
   return (
-    <article className="stat-card">
+    <button
+      type="button"
+      onClick={() => onClick(isActive ? null : filterKey)}
+      className={`stat-card text-left w-full transition-all duration-150 ${
+        isActive
+          ? "ring-2 ring-teal shadow-lg scale-[1.02]"
+          : "hover:shadow-md hover:scale-[1.01]"
+      }`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-sm font-semibold text-slate">{title}</div>
@@ -49,7 +72,7 @@ function statCard(title: string, value: number, note: string, icon: string, tone
           {icon}
         </div>
       </div>
-    </article>
+    </button>
   );
 }
 
@@ -60,6 +83,7 @@ export default function DashboardPage() {
   const [overviews, setOverviews] = useState<Record<string, IntakeOverview>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeFilter, setActiveFilter] = useState<FilterKey>(null);
 
   const load = useCallback(async (cancelledRef?: { current: boolean }) => {
     try {
@@ -161,6 +185,30 @@ export default function DashboardPage() {
     [overviews, todayVisits]
   );
 
+  const filteredVisits = useMemo(() => {
+    if (!activeFilter) return todayVisits;
+    if (activeFilter === "scheduled") return todayVisits;
+    if (activeFilter === "intake") {
+      return todayVisits.filter((visit) => {
+        const session = sessionsByVisit[visit.visit_id];
+        return session?.status === "in_progress";
+      });
+    }
+    if (activeFilter === "forms") {
+      return todayVisits.filter((visit) => {
+        const overview = overviews[visit.visit_id];
+        return overview?.remaining_fields === 0;
+      });
+    }
+    if (activeFilter === "ready") {
+      return todayVisits.filter((visit) => {
+        const overview = overviews[visit.visit_id];
+        return visit.status === "checked_in" || overview?.completion_percent === 100;
+      });
+    }
+    return todayVisits;
+  }, [activeFilter, todayVisits, sessionsByVisit, overviews]);
+
   return (
     <div className="space-y-6">
       {error ? (
@@ -168,10 +216,46 @@ export default function DashboardPage() {
       ) : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {statCard("Scheduled Today", loading ? 0 : todayVisits.length, "Patients on today’s intake list.", "🗓", "bg-slate-100 text-slate-700")}
-        {statCard("Intake Started", loading ? 0 : callsPending, "Visits with active voice or kiosk intake progress.", "🗣", "bg-sky-100 text-sky-700")}
-        {statCard("Forms Complete", loading ? 0 : formsComplete, "Visits with no remaining intake fields.", "✓", "bg-teal-100 text-teal-700")}
-        {statCard("Ready for Check-in", loading ? 0 : readyForCheckin, "Patients who can move straight to kiosk review.", "⟶", "bg-emerald-100 text-emerald-700")}
+        <StatCard
+          title="Scheduled Today"
+          value={loading ? 0 : todayVisits.length}
+          note="Patients on today's intake list."
+          icon="🗓"
+          tone="bg-slate-100 text-slate-700"
+          filterKey="scheduled"
+          activeFilter={activeFilter}
+          onClick={setActiveFilter}
+        />
+        <StatCard
+          title="Intake Started"
+          value={loading ? 0 : callsPending}
+          note="Visits with active voice or kiosk intake progress."
+          icon="🗣"
+          tone="bg-sky-100 text-sky-700"
+          filterKey="intake"
+          activeFilter={activeFilter}
+          onClick={setActiveFilter}
+        />
+        <StatCard
+          title="Forms Complete"
+          value={loading ? 0 : formsComplete}
+          note="Visits with no remaining intake fields."
+          icon="✓"
+          tone="bg-teal-100 text-teal-700"
+          filterKey="forms"
+          activeFilter={activeFilter}
+          onClick={setActiveFilter}
+        />
+        <StatCard
+          title="Ready for Check-in"
+          value={loading ? 0 : readyForCheckin}
+          note="Patients who can move straight to kiosk review."
+          icon="⟶"
+          tone="bg-emerald-100 text-emerald-700"
+          filterKey="ready"
+          activeFilter={activeFilter}
+          onClick={setActiveFilter}
+        />
       </section>
 
       <section className="card overflow-hidden">
@@ -201,12 +285,14 @@ export default function DashboardPage() {
                 <tr>
                   <td colSpan={5} className="px-5 py-8 text-slate">Loading today&apos;s schedule...</td>
                 </tr>
-              ) : todayVisits.length === 0 ? (
+              ) : filteredVisits.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-slate">No visits scheduled for today.</td>
+                  <td colSpan={5} className="px-5 py-8 text-slate">
+                    No visits scheduled for today.
+                  </td>
                 </tr>
               ) : (
-                todayVisits.map((visit) => {
+                filteredVisits.map((visit) => {
                   const patient = patients[visit.patient_id];
                   const overview = overviews[visit.visit_id];
                   const status = callStatusForVisit(visit, overview, sessionsByVisit[visit.visit_id]);
